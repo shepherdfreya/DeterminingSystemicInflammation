@@ -1,0 +1,4 @@
+exposure,outcome,run
+IL6,CRP,TRUE
+Depression,CRP,TRUE
+Depression,IL6,TRUE
