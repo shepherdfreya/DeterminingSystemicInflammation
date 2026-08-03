@@ -3,6 +3,7 @@
 .Rhistory
 .RData
 .Rproj.user/
+.r-lib/
 
 # Large/local inputs and reference panels
 Data/Raw/

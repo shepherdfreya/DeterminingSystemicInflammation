@@ -52,6 +52,24 @@ Core packages used include:
 
 Some `gwasvcf` dependencies are installed through Bioconductor. If `gwasvcf` is installed but fails to load, check that its Bioconductor dependencies are also installed.
 
+The colocalization step additionally requires:
+
+- coloc
+
+Install it with:
+
+``` r
+install.packages("coloc")
+```
+
+If you install packages into a project-local R library, set `R_LIBS_USER` before running the pipeline so that each `Rscript` call can find them. For example:
+
+``` bash
+mkdir -p .r-lib
+R_LIBS_USER="$(pwd)/.r-lib" Rscript -e "install.packages(c('data.table', 'dplyr', 'TwoSampleMR', 'gwasvcf'), repos = c('https://mrcieu.r-universe.dev', 'https://cloud.r-project.org'))"
+R_LIBS_USER="$(pwd)/.r-lib" Rscript -e "if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager', repos = 'https://cloud.r-project.org'); BiocManager::install(c('BiocGenerics', 'Biostrings', 'GenomeInfoDb', 'GenomicRanges', 'IRanges', 'Rsamtools', 'S4Vectors', 'SummarizedExperiment', 'VariantAnnotation'), ask = FALSE, update = FALSE)"
+```
+
 ------------------------------------------------------------------------
 
 # Input Requirements
@@ -100,7 +118,7 @@ The `effect_col` can contain either:
 - beta values, or
 - odds ratio values
 
-If OR values are supplied, they are converted within the pipeline to beta estimates using:
+If `effect_col = OR`, the input-checking step appends a `beta` column to that GWAS file using:
 
 ``` r
 beta = log(OR)
@@ -108,11 +126,13 @@ beta = log(OR)
 
 The original effect column is retained in the GWAS file.
 
-To keep downstream analyses simple, the manifest should then be manually updated so that:
+The pipeline then writes an output-side standardised manifest:
 
 ``` text
-effect_col = beta
+trait_manifest_standardised.csv
 ```
+
+Downstream scripts automatically use this standardised manifest when it is present, so the original `trait_manifest.csv` does not need to be edited manually between steps.
 
 ------------------------------------------------------------------------
 
@@ -122,16 +142,24 @@ This file specifies which analyses to run.
 
 It must contain:
 
-| exposure   | outcome | run   |
-|------------|---------|-------|
-| CRP        | IL6     | FALSE |
-| IL6        | CRP     | TRUE  |
-| Obesity    | CRP     | TRUE  |
-| Obesity    | IL6     | TRUE  |
-| Depression | CRP     | TRUE  |
-| Depression | IL6     | TRUE  |
+| exposure   | outcome | run   | Analysis  |
+|------------|---------|-------|-----------|
+| CRP        | IL6     | FALSE | cis_trans |
+| IL6        | CRP     | TRUE  | cis_only  |
+| IL6        | CRP     | TRUE  | cis_trans |
+| Depression | CRP     | TRUE  | cis_trans |
+| Depression | IL6     | TRUE  | cis_trans |
 
 Only rows with `run = TRUE` are processed.
+
+The `Analysis` column is optional for backwards compatibility. If provided, values must be:
+
+``` text
+cis_only
+cis_trans
+```
+
+Use `cis_only` for protein exposures where instruments should be restricted to the protein coordinate window. Use `cis_trans` to include all retained instruments. The cis window is defined in `Utils/Config.R` as `CIS_WINDOW <- 1e6`, meaning plus or minus 1 Mb around the protein start/end coordinates supplied in `trait_manifest.csv`.
 
 ------------------------------------------------------------------------
 
@@ -150,11 +178,16 @@ These include:
 - `REF_PANEL_PREFIXES`: build-specific LD reference panel prefixes
 - exposure MAF threshold
 - exposure p-value threshold
+- exposure F-statistic threshold
 - exposure LD clumping r2 threshold
 - exposure LD clumping window size
+- cis analysis window
 - proxy search r2 threshold
 - proxy search window size
 - maximum number of proxy SNPs to return
+- colocalization H4 pass threshold
+- minimum overlapping SNPs required for colocalization
+- evidence appraisal alpha threshold
 
 Example proxy settings:
 
@@ -162,6 +195,26 @@ Example proxy settings:
 PROXY_TAG_R2   <- 0.8
 PROXY_TAG_KB   <- 5000
 PROXY_TAG_NSNP <- 5000
+```
+
+Example colocalization settings:
+
+``` r
+COLOC_H4_THRESHOLD <- 0.8
+COLOC_MIN_OVERLAP  <- 10
+```
+
+Example cis/trans analysis setting:
+
+``` r
+CIS_WINDOW <- 1e6
+```
+
+Example evidence appraisal setting:
+
+``` r
+EVIDENCE_ALPHA <- 0.05
+EVIDENCE_BONFERRONI_N_TESTS <- NA
 ```
 
 Example reference panel settings:
@@ -194,23 +247,74 @@ Current structure:
 04a_find_proxy_candidates_array.R array
 04b_combine_proxy_candidates.R    serial
 04c_apply_proxies_array.R         array
+05a_run_mr_array.R                array
+05b_combine_mr_outputs.R          serial
+06a_run_colocalization_array.R    array
+06b_combine_colocalization.R      serial
+07_evidence_appraisal.R           serial
 ```
 
-From the project root, run:
-
-``` bash
-bash Shell/run_pipeline.sh <input_dir> <output_dir>
-```
-
-The wrapper script runs/submits each step in order.
-
-For a local demonstration using the bundled trimmed example data, run:
+For a local end-to-end demonstration using the bundled trimmed example data, run:
 
 ``` bash
 bash Shell/run_pipeline_local.sh example_data Results/ExampleRun
 ```
 
+If using a project-local R library, prefix the command with `R_LIBS_USER`:
+
+``` bash
+R_LIBS_USER="$(pwd)/.r-lib" bash Shell/run_pipeline_local.sh example_data Results/ExampleRun
+```
+
+The second argument names the output folder. For example, `Results/ExampleRun`, `Results/TestRun`, and `Results/SmokeTest` are separate runs created by passing different output directories.
+
+For SLURM execution from the project root, run:
+
+``` bash
+bash Shell/run_pipeline.sh <input_dir> <output_dir>
+```
+
+The SLURM wrapper submits the full dependency chain through outcome/exposure preparation, proxy finding, proxy application, MR, MR summary combination, and evidence appraisal. Colocalization is optional because it can be expensive at scale:
+
+``` bash
+RUN_COLOC=TRUE bash Shell/run_pipeline.sh <input_dir> <output_dir>
+```
+
+If using a project-local R library on the cluster, export or prefix `R_LIBS_USER` so each submitted job can find the same packages:
+
+``` bash
+R_LIBS_USER="/path/to/DeterminingSystemicInflammation/.r-lib" bash Shell/run_pipeline.sh <input_dir> <output_dir>
+```
+
+The wrapper inherits `R_LIBS_USER` inside each SLURM job. It also allows cluster-specific resource settings without editing the script:
+
+``` bash
+R_MODULE=R/4.3.1 \
+EXPOSURE_MEM=16G EXPOSURE_TIME=08:00:00 \
+PROXY_MEM=32G PROXY_TIME=12:00:00 \
+MR_MEM=16G MR_TIME=08:00:00 \
+bash Shell/run_pipeline.sh <input_dir> <output_dir>
+```
+
+Useful flags:
+
+| Setting | Default | Purpose |
+|----|----|----|
+| `RUN_COLOC` | `FALSE` | Submit colocalization array and combine jobs |
+| `RUN_APPRAISAL` | `TRUE` | Run `Scripts/07_evidence_appraisal.R` after MR, or after colocalization if enabled |
+| `R_MODULE` | `R` | Module name loaded inside each SLURM job |
+| `OUTCOME_MEM`, `OUTCOME_TIME` | `8G`, `02:00:00` | Resources for outcome preparation |
+| `EXPOSURE_MEM`, `EXPOSURE_TIME` | `8G`, `04:00:00` | Resources for exposure preparation and clumping |
+| `PROXY_MEM`, `PROXY_TIME` | `16G`, `08:00:00` | Resources for proxy search and proxy application |
+| `MR_MEM`, `MR_TIME` | `8G`, `04:00:00` | Resources for MR array jobs |
+| `COLOC_MEM`, `COLOC_TIME` | `16G`, `08:00:00` | Resources for colocalization array jobs |
+| `COMBINE_MEM`, `COMBINE_TIME` | `4G`, `01:00:00` | Resources for serial combine/appraisal jobs |
+
+For real runs with thousands of proteins, start with a pilot manifest containing a small active subset, check `Results/<run>/pipeline_log.txt`, the files under `Results/<run>/logs/`, `mr_summary.tsv`, `mr_results.tsv`, and `evidence_appraisal.tsv`, then scale up by increasing the number of active rows in `analysis_plan.csv`.
+
 The example files are small extracts of redistributable GWAS summary statistics. They are intended for checking installation and demonstrating the workflow, not for scientific interpretation.
+
+The example data directory may also contain `example_subset_summary.tsv`, a static summary of the number of rows requested and written when the bundled example files were created. It is not generated by the pipeline.
 
 ------------------------------------------------------------------------
 
@@ -226,7 +330,7 @@ beta = log(OR)
 
 The original OR column is retained.
 
-Before continuing downstream, update `trait_manifest.csv` so that `effect_col` points to the beta column.
+The input-checking step writes `trait_manifest_standardised.csv` to the output directory and changes converted traits to `effect_col = beta` in that file. Downstream scripts automatically use this standardised manifest when it is present.
 
 ------------------------------------------------------------------------
 
@@ -255,6 +359,7 @@ This step includes:
 - minor allele frequency filtering
 - genome-wide significance filtering
 - LD clumping using PLINK
+- F-statistic filtering after exposure formatting, using `(beta / se)^2`
 - build-specific reference panel selection based on the `build` column in `trait_manifest.csv`
 
 Current exposure filtering uses:
@@ -262,6 +367,7 @@ Current exposure filtering uses:
 ``` text
 MAF threshold: > 0.01
 p-value threshold: p < 5e-8
+F-statistic threshold: F > 10
 ```
 
 After this, variants are LD clumped using:
@@ -364,8 +470,9 @@ For each exposure-outcome pair, this script:
 5.  Selects the best proxy for each missing SNP based on highest `R2`
 6.  Removes exposure SNPs missing from the outcome GWAS
 7.  Formats selected proxy SNPs as exposure data
-8.  Merges proxy rows into the exposure dataset
-9.  Writes pair-specific proxied exposure files
+8.  Applies the same F-statistic filter to proxy rows
+9.  Merges proxy rows into the exposure dataset
+10. Writes pair-specific proxied exposure files
 
 Outputs are written to:
 
@@ -393,7 +500,7 @@ R
 R2
 ```
 
-The no-proxy file records missing SNPs that could not be replaced.
+The no-proxy file records missing SNPs that could not be replaced. Proxy rows that fail the F-statistic threshold are also recorded there and are not added to the proxied exposure dataset.
 
 ------------------------------------------------------------------------
 
@@ -411,6 +518,155 @@ Scripts completed so far:
 | `04a_find_proxy_candidates_array.R` | Array | Identify LD proxy candidates for SNPs missing from each outcome GWAS |
 | `04b_combine_proxy_candidates.R` | Serial | Combine proxy candidate files across all exposure-outcome pairs |
 | `04c_apply_proxies_array.R` | Array | Apply best available proxies to exposure datasets for each exposure-outcome pair |
+| `05a_run_mr_array.R` | Array | Harmonise one exposure-outcome pair and run MR |
+| `05b_combine_mr_outputs.R` | Serial | Combine pair-specific MR summaries and MR results for the run |
+| `06a_run_colocalization_array.R` | Array | Run genetic colocalization for one exposure-outcome pair |
+| `06b_combine_colocalization.R` | Serial | Combine pair-specific colocalization outputs for the run |
+| `07_evidence_appraisal.R` | Serial | Assign evidence tiers using MR significance, pQTL class, colocalization, heterogeneity, and pleiotropy diagnostics |
+
+------------------------------------------------------------------------
+
+# MR Outputs
+
+The MR step writes one summary file per exposure-outcome pair to:
+
+``` text
+mr_summaries/
+```
+
+These files are created by `Scripts/05a_run_mr_array.R`. The local wrapper then runs `Scripts/05b_combine_mr_outputs.R`, which combines them into:
+
+``` text
+mr_summary.tsv
+```
+
+The same combine step also combines pair-specific MR result files from:
+
+``` text
+MR_results/per_pair/
+```
+
+into:
+
+``` text
+mr_results.tsv
+```
+
+------------------------------------------------------------------------
+
+# Genetic Colocalization
+
+Genetic colocalization can be run after MR as a sensitivity analysis using:
+
+``` text
+Scripts/06a_run_colocalization_array.R
+```
+
+For each exposure-outcome pair, this script:
+
+1.  Reads the full raw exposure and outcome GWAS files using the manifest.
+2.  Defines colocalization loci.
+3.  Runs `coloc::coloc.abf` for each locus with overlapping SNPs.
+4.  Reports posterior probabilities for H0-H4.
+5.  Flags loci as `Pass` when `PP.H4.abf > COLOC_H4_THRESHOLD`.
+
+By default:
+
+``` text
+H4 > 0.8 = Pass
+```
+
+For exposures with protein coordinates in `trait_manifest.csv`, the script uses the protein region plus `cis_window` from `Utils/Config.R`. For exposures without protein coordinates, it falls back to instrument-centred loci using `all_exposures.txt`.
+
+Pair-specific outputs are written to:
+
+``` text
+Colocalization/per_pair/
+```
+
+with files named:
+
+``` text
+<exposure>__<outcome>__colocalization.tsv
+```
+
+The combined colocalization summary is created with:
+
+``` text
+Scripts/06b_combine_colocalization.R
+```
+
+and written to:
+
+``` text
+colocalization_summary.tsv
+```
+
+To run locally for all active exposure-outcome pairs after MR:
+
+``` bash
+N_PAIRS=$(Rscript -e "plan <- read.csv(file.path('example_data','analysis_plan.csv'), stringsAsFactors=FALSE); plan\$run <- tolower(as.character(plan\$run)) %in% c('true','t','1'); cat(sum(plan\$run))")
+for TASK_ID in $(seq 1 "$N_PAIRS"); do
+  Rscript Scripts/06a_run_colocalization_array.R example_data Results/ExampleRun "$TASK_ID"
+done
+Rscript Scripts/06b_combine_colocalization.R Results/ExampleRun
+```
+
+If using a project-local R library, prefix these commands with `R_LIBS_USER="$(pwd)/.r-lib"`.
+
+------------------------------------------------------------------------
+
+# Evidence Appraisal
+
+Evidence appraisal is performed after MR outputs have been combined using:
+
+``` text
+Scripts/07_evidence_appraisal.R
+```
+
+This script reads:
+
+``` text
+mr_results.tsv
+colocalization_summary.tsv
+```
+
+The colocalization file is optional for running the script. If it is not present, the colocalization criterion is reported as `Not available`, and rows cannot be assigned to Tier A, B, or C.
+
+The script selects one primary MR result per exposure-outcome-analysis set:
+
+- `Wald ratio` for single-SNP analyses
+- `Inverse variance weighted` for analyses with two or more SNPs
+
+It then calculates:
+
+- Bonferroni significance using `EVIDENCE_ALPHA / number_of_primary_tests`
+- FDR significance using Benjamini-Hochberg correction
+- colocalization pass status using `PP.H4.abf > COLOC_H4_THRESHOLD`
+- heterogeneity pass status using Cochran's Q `p > EVIDENCE_ALPHA`
+- pleiotropy pass status using MR-Egger intercept `p > EVIDENCE_ALPHA`
+- causal direction status using Steiger filtering from `mr_summary.tsv`
+
+Heterogeneity and pleiotropy diagnostics can be `Not applicable` when there are too few SNPs for the test. `Not applicable` is allowed for tier assignment and does not count as a failed diagnostic.
+
+By default, the Bonferroni denominator is the number of primary MR tests in the run. To use a fixed denominator, set `EVIDENCE_BONFERRONI_N_TESTS` in `Utils/Config.R`.
+
+Evidence tiers are assigned as:
+
+| Tier | pQTLs | FDR | Bonferroni | Colocalization | Heterogeneity | Pleiotropy | Causal direction |
+|----|----|----|----|----|----|----|----|
+| Tier A | Cis | Pass | Pass | H4 pass | Pass or not applicable | Pass or not applicable | Pass |
+| Tier B | Cis | Pass | No pass | H4 pass | Pass or not applicable | Pass or not applicable | Pass |
+| Tier C | Cis/Trans | Pass | Not required | H4 pass | Pass or not applicable | Pass or not applicable | Pass |
+| No Tier | Any | Criteria not met | Criteria not met | Criteria not met | Criteria not met | Criteria not met | Criteria not met |
+
+The output is:
+
+``` text
+evidence_appraisal.tsv
+```
+
+Diagnostic columns are retained in the output so each tier assignment can be audited.
 
 ------------------------------------------------------------------------
 
@@ -420,21 +676,20 @@ Scripts completed so far:
 - GWAS files do not need to be manually renamed to a standard set of headers.
 - Empty cells in `trait_manifest.csv` should be filled with `NA`.
 - Always run the input-checking step before downstream analyses.
-- Ensure `effect_col` is set to beta before proceeding beyond standardisation.
+- If `effect_col = OR`, run the input-checking step first. It will write `trait_manifest_standardised.csv`, and downstream scripts will use that file automatically.
 - Exposure preparation requires a valid PLINK path and appropriate build-specific LD reference panel files.
+- Exposure instruments and proxy instruments are filtered using `EXPOSURE_F_THRESHOLD` from `Utils/Config.R`.
 - Proxy search also requires build-specific LD reference panels.
 - The `trait_id` values in `trait_manifest.csv` must exactly match the exposure and outcome names used in `analysis_plan.csv`.
 - Proxy SNPs are selected using LD information and then reformatted using the full exposure GWAS.
+- Colocalization is a sensitivity analysis and requires dense regional GWAS data, not only clumped instruments.
 - Allele harmonisation is still performed downstream after proxy application.
 
 ------------------------------------------------------------------------
 
 # Next Steps
 
-Downstream steps to be added include:
+Potential extensions include:
 
-- harmonisation of proxied exposures and outcomes
-- Mendelian randomisation analyses
-- sensitivity analyses
-- results summarisation
-- plotting
+- additional sensitivity analyses
+- plotting and report generation

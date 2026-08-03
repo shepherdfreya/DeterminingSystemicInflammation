@@ -30,8 +30,13 @@ source("Utils/Packages.R")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
+manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+if (!file.exists(manifest_path)) {
+  manifest_path <- file.path(input_dir, "trait_manifest.csv")
+}
+
 manifest <- read.csv(
-  file.path(input_dir, "trait_manifest.csv"),
+  manifest_path,
   stringsAsFactors = FALSE,
   check.names = FALSE
 )

@@ -163,6 +163,22 @@ for TASK_ID in $(seq 1 "$N_PAIRS"); do
   Rscript Scripts/05a_run_mr_array.R "$INPUT_DIR" "$OUTPUT_DIR" "$TASK_ID"
 done
 
+############################################################
+# STEP 10: COMBINE MR OUTPUTS
+############################################################
+
+echo ""
+echo "Step 10: Combining MR outputs"
+Rscript Scripts/05b_combine_mr_outputs.R "$OUTPUT_DIR"
+
+############################################################
+# STEP 11: EVIDENCE APPRAISAL
+############################################################
+
+echo ""
+echo "Step 11: Appraising evidence"
+Rscript Scripts/07_evidence_appraisal.R "$OUTPUT_DIR"
+
 echo ""
 echo "========================================"
 echo "Local pipeline completed successfully"

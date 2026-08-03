@@ -37,8 +37,13 @@ plan <- read.csv(
 )
 
 
+manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+if (!file.exists(manifest_path)) {
+  manifest_path <- file.path(input_dir, "trait_manifest.csv")
+}
+
 manifest <- read.csv(
-    file.path(input_dir, "trait_manifest.csv"),
+    manifest_path,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
@@ -49,6 +54,80 @@ manifest <- read.csv(
 
 normalise_run_flag <- function(x) {
   tolower(as.character(x)) %in% c("true", "t", "1")
+}
+
+get_analysis_mode <- function(pair) {
+  if ("Analysis" %in% names(pair)) {
+    mode <- tolower(trimws(as.character(pair$Analysis[[1]])))
+    if (mode %in% c("cis_only", "cis_trans")) {
+      return(mode)
+    }
+  }
+
+  "cis_trans"
+}
+
+make_safe_pair <- function(exposure_id, outcome_id, analysis_mode, include_analysis) {
+  base <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+
+  if (include_analysis) {
+    return(paste0(base, "__", make.names(analysis_mode)))
+  }
+
+  base
+}
+
+is_provided <- function(x) {
+  !(is.na(x) || trimws(as.character(x)) == "" ||
+      trimws(as.character(x)) %in% c("NA", "na", "Na", "n/a", "N/A"))
+}
+
+has_protein_coordinates <- function(row) {
+  is_provided(row$protein_chr_col[[1]]) &&
+    is_provided(row$protein_start_col[[1]]) &&
+    is_provided(row$protein_end_col[[1]])
+}
+
+annotate_instrument_region <- function(exp_dat, exposure_row) {
+  if (!has_protein_coordinates(exposure_row)) {
+    exp_dat$instrument_region <- "unknown"
+    return(exp_dat)
+  }
+
+  needed <- c("chr.exposure", "pos.exposure")
+  if (!all(needed %in% names(exp_dat))) {
+    stop("Exposure data must contain columns for cis/trans annotation: ", paste(needed, collapse = ", "))
+  }
+
+  protein_chr <- as.character(exposure_row$protein_chr_col[[1]])
+  start <- suppressWarnings(as.numeric(exposure_row$protein_start_col[[1]])) - CIS_WINDOW
+  end <- suppressWarnings(as.numeric(exposure_row$protein_end_col[[1]])) + CIS_WINDOW
+
+  exp_dat %>%
+    dplyr::mutate(
+      instrument_region = dplyr::if_else(
+        as.character(.data$chr.exposure) == protein_chr &
+          suppressWarnings(as.numeric(.data$pos.exposure)) >= start &
+          suppressWarnings(as.numeric(.data$pos.exposure)) <= end,
+        "cis",
+        "trans"
+      )
+    )
+}
+
+filter_exposure_by_analysis <- function(exp_dat, exposure_row, analysis_mode) {
+  exp_dat <- annotate_instrument_region(exp_dat, exposure_row)
+
+  if (analysis_mode == "cis_only") {
+    if (!has_protein_coordinates(exposure_row)) {
+      stop("Analysis = cis_only requires protein coordinates for exposure: ", exposure_row$trait_id[[1]])
+    }
+
+    exp_dat <- exp_dat %>%
+      dplyr::filter(.data$instrument_region == "cis")
+  }
+
+  exp_dat
 }
 
 safe_write_table <- function(dat, file) {
@@ -64,12 +143,21 @@ safe_write_table <- function(dat, file) {
 write_per_task_summary <- function(summary_row, output_dir, exposure_name, outcome_name) {
   summary_dir <- file.path(output_dir, "mr_summaries")
   dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
-  
+
+  file_stem <- paste0(make.names(exposure_name), "__", make.names(outcome_name))
+  if (
+    exists("include_analysis_in_name", inherits = TRUE) &&
+    isTRUE(include_analysis_in_name) &&
+    exists("analysis_mode", inherits = TRUE)
+  ) {
+    file_stem <- paste0(file_stem, "__", make.names(analysis_mode))
+  }
+
   out <- file.path(
     summary_dir,
-    paste0(make.names(exposure_name), "__", make.names(outcome_name), ".tsv")
+    paste0(file_stem, ".tsv")
   )
-  
+
   safe_write_table(summary_row, out)
 }
 
@@ -77,30 +165,30 @@ get_method_list <- function(n_snps) {
   if (n_snps == 1) {
     return(c("mr_wald_ratio"))
   }
-  
+
   if (n_snps == 2) {
     return(c("mr_ivw"))
   }
-  
+
   c("mr_ivw", "mr_weighted_median", "mr_egger_regression")
 }
 
 run_steiger_safe <- function(hdat) {
-  
+
   needed <- c("samplesize.exposure", "samplesize.outcome")
-  
+
   if (!all(needed %in% names(hdat))) {
     hdat$steiger_available <- FALSE
     hdat$steiger_filter_applied <- FALSE
     return(hdat)
   }
-  
+
   if (all(is.na(hdat$samplesize.exposure)) || all(is.na(hdat$samplesize.outcome))) {
     hdat$steiger_available <- FALSE
     hdat$steiger_filter_applied <- FALSE
     return(hdat)
   }
-  
+
   out <- tryCatch(
     {
       TwoSampleMR::steiger_filtering(hdat) %>%
@@ -117,12 +205,12 @@ run_steiger_safe <- function(hdat) {
       hdat
     }
   )
-  
+
   out
 }
 
 run_mr_for_pair <- function(hdat) {
-  
+
   hdat <- hdat %>%
     dplyr::filter(
       !is.na(.data$beta.exposure),
@@ -131,15 +219,15 @@ run_mr_for_pair <- function(hdat) {
       !is.na(.data$se.outcome)
     ) %>%
     dplyr::distinct(.data$id.exposure, .data$id.outcome, .data$SNP, .keep_all = TRUE)
-  
+
   n_snps <- dplyr::n_distinct(hdat$SNP)
-  
+
   if (n_snps == 0) {
     return(data.frame())
   }
-  
+
   method_list <- get_method_list(n_snps)
-  
+
   mr_res <- tryCatch(
     {
       TwoSampleMR::mr(hdat, method_list = method_list) %>%
@@ -150,11 +238,11 @@ run_mr_for_pair <- function(hdat) {
       data.frame()
     }
   )
-  
+
   if (nrow(mr_res) == 0) {
     return(data.frame())
   }
-  
+
   pleio <- if ("mr_egger_regression" %in% method_list) {
     tryCatch(
       {
@@ -186,7 +274,7 @@ run_mr_for_pair <- function(hdat) {
       egger_intercept_pval = NA_real_
     )
   }
-  
+
   het <- if (n_snps >= 2 && "mr_ivw" %in% method_list) {
     tryCatch(
       {
@@ -207,10 +295,10 @@ run_mr_for_pair <- function(hdat) {
   } else {
     data.frame()
   }
-  
+
   out <- mr_res %>%
     dplyr::left_join(pleio, by = c("id.exposure", "id.outcome"))
-  
+
   if (nrow(het) > 0) {
     out <- out %>%
       dplyr::left_join(het, by = c("id.exposure", "id.outcome", "method"))
@@ -219,9 +307,9 @@ run_mr_for_pair <- function(hdat) {
     out$Q_df <- NA_real_
     out$Q_pval <- NA_real_
   }
-  
+
   out$n_snps <- n_snps
-  
+
   out
 }
 
@@ -251,13 +339,16 @@ pair <- plan[task_id, , drop = FALSE]
 
 exposure_id <- pair$exposure[[1]]
 outcome_id  <- pair$outcome[[1]]
+analysis_mode <- get_analysis_mode(pair)
+include_analysis_in_name <- "Analysis" %in% names(plan)
 
-safe_pair <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+safe_pair <- make_safe_pair(exposure_id, outcome_id, analysis_mode, include_analysis_in_name)
 
 message("========================================")
 message("Running MR")
 message("Exposure: ", exposure_id)
 message("Outcome : ", outcome_id)
+message("Analysis: ", analysis_mode)
 message("========================================")
 
 # -------------------------
@@ -277,6 +368,7 @@ done_file      <- file.path(mr_dir, paste0(safe_pair, ".__DONE"))
 result_row <- data.frame(
   exposure = exposure_id,
   outcome = outcome_id,
+  analysis = analysis_mode,
   status = "failed",
   err_message = "",
   exposure_snps = 0L,
@@ -324,20 +416,23 @@ exp_dat <- data.table::fread(
   showProgress = FALSE
 )
 
+exposure_row <- manifest[match(exposure_id, manifest$trait_id), , drop = FALSE]
+exp_dat <- filter_exposure_by_analysis(exp_dat, exposure_row, analysis_mode)
+
 # -------------------------
 # Standardise exposure IDs
 # -------------------------
 
 if ("id.exposure" %in% names(exp_dat)) {
-  
+
   first_id <- exp_dat$id.exposure[!is.na(exp_dat$id.exposure) & exp_dat$id.exposure != ""][1]
-  
+
   if (is.na(first_id) || length(first_id) == 0) {
     first_id <- exposure_id
   }
-  
+
   exp_dat$id.exposure <- first_id
-  
+
 } else {
   exp_dat$id.exposure <- exposure_id
 }
@@ -405,17 +500,17 @@ result_row$harmonised_snps <- dplyr::n_distinct(hdat$SNP)
 if (!"samplesize" %in% names(manifest)) {
   warning("No 'samplesize' column found in trait_manifest.csv. Steiger filtering will be skipped.")
 } else {
-  
+
   exposure_n <- manifest %>%
     dplyr::filter(.data$trait_id == exposure_id) %>%
     dplyr::pull(.data$samplesize) %>%
     .[1]
-  
+
   outcome_n <- manifest %>%
     dplyr::filter(.data$trait_id == outcome_id) %>%
     dplyr::pull(.data$samplesize) %>%
     .[1]
-  
+
   hdat$samplesize.exposure <- suppressWarnings(as.numeric(exposure_n))
   hdat$samplesize.outcome  <- suppressWarnings(as.numeric(outcome_n))
 }
@@ -432,7 +527,7 @@ result_row$mr_keep_snps <- dplyr::n_distinct(hdat$SNP)
 if (nrow(hdat) == 0) {
   result_row$status <- "completed"
   result_row$err_message <- "No SNPs retained after harmonisation mr_keep filtering"
-  
+
   safe_write_table(data.frame(), out_mr)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
   file.create(done_file)
@@ -450,7 +545,7 @@ result_row$steiger_filter_applied <- any(hdat$steiger_filter_applied, na.rm = TR
 if (nrow(hdat) == 0) {
   result_row$status <- "completed"
   result_row$err_message <- "No SNPs retained after Steiger filtering"
-  
+
   safe_write_table(data.frame(), out_mr)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
   file.create(done_file)
@@ -469,7 +564,7 @@ if (nrow(mr_res) == 0) {
   result_row$status <- "completed"
   result_row$err_message <- "MR returned no results"
   result_row$mr_rows <- 0L
-  
+
   safe_write_table(data.frame(), out_mr)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
   file.create(done_file)
@@ -480,7 +575,7 @@ mr_res <- mr_res %>%
   dplyr::mutate(
     exposure = exposure_id,
     outcome = outcome_id,
-    analysis_set = "all_instruments"
+    analysis_set = analysis_mode
   )
 
 result_row$status <- "completed"

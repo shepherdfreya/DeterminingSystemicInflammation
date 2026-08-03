@@ -34,11 +34,11 @@ if (!dir.exists(proxy_dir)) {
 # -------------------------
 
 read_many_tables <- function(files) {
-  
+
   if (length(files) == 0) {
     return(data.frame())
   }
-  
+
   dat_list <- lapply(files, function(f) {
     utils::read.table(
       f,
@@ -49,7 +49,7 @@ read_many_tables <- function(files) {
       colClasses = "character"
     )
   })
-  
+
   dplyr::bind_rows(dat_list)
 }
 
@@ -122,24 +122,26 @@ for (col in numeric_cols) {
   }
 }
 if (nrow(proxy_candidates) > 0) {
-  
+
   required_cols <- c("exposure", "outcome", "missing_snp", "proxy_snp")
-  
+
   if (!all(required_cols %in% names(proxy_candidates))) {
     stop(
       "Combined proxy candidate table is missing required columns: ",
       paste(setdiff(required_cols, names(proxy_candidates)), collapse = ", ")
     )
   }
-  
-  proxy_candidates <- proxy_candidates %>%
-    dplyr::distinct(
-      .data$exposure,
-      .data$outcome,
-      .data$missing_snp,
-      .data$proxy_snp,
-      .keep_all = TRUE
-    )
+
+  distinct_cols <- c("exposure", "outcome", "missing_snp", "proxy_snp")
+  if ("analysis" %in% names(proxy_candidates)) {
+    distinct_cols <- c("exposure", "outcome", "analysis", "missing_snp", "proxy_snp")
+  }
+
+  proxy_candidates <- proxy_candidates[
+    !duplicated(proxy_candidates[distinct_cols]),
+    ,
+    drop = FALSE
+  ]
 }
 
 # -------------------------
@@ -165,7 +167,7 @@ message("Summary rows: ", nrow(proxy_summary))
 if (nrow(proxy_summary) > 0 && "status" %in% names(proxy_summary)) {
   completed <- sum(proxy_summary$status == "completed", na.rm = TRUE)
   failed    <- sum(proxy_summary$status == "failed", na.rm = TRUE)
-  
+
   message("Proxy searches completed: ", completed)
   message("Proxy searches failed: ", failed)
 }

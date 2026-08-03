@@ -31,8 +31,13 @@ source("Utils/Config.R")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
+manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+if (!file.exists(manifest_path)) {
+  manifest_path <- file.path(input_dir, "trait_manifest.csv")
+}
+
 manifest <- read.csv(
-  file.path(input_dir, "trait_manifest.csv"),
+  manifest_path,
   stringsAsFactors = FALSE,
   check.names = FALSE
 )
@@ -49,6 +54,70 @@ plan <- read.csv(
 
 normalise_run_flag <- function(x) {
   tolower(as.character(x)) %in% c("true", "t", "1")
+}
+
+get_analysis_mode <- function(pair) {
+  if ("Analysis" %in% names(pair)) {
+    mode <- tolower(trimws(as.character(pair$Analysis[[1]])))
+    if (mode %in% c("cis_only", "cis_trans")) {
+      return(mode)
+    }
+  }
+
+  "cis_trans"
+}
+
+make_safe_pair <- function(exposure_id, outcome_id, analysis_mode, include_analysis) {
+  base <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+
+  if (include_analysis) {
+    return(paste0(base, "__", make.names(analysis_mode)))
+  }
+
+  base
+}
+
+is_provided <- function(x) {
+  !(is.na(x) || trimws(as.character(x)) == "" ||
+      trimws(as.character(x)) %in% c("NA", "na", "Na", "n/a", "N/A"))
+}
+
+has_protein_coordinates <- function(row) {
+  is_provided(row$protein_chr_col[[1]]) &&
+    is_provided(row$protein_start_col[[1]]) &&
+    is_provided(row$protein_end_col[[1]])
+}
+
+filter_exposure_by_analysis <- function(exp_df, exposure_row, analysis_mode) {
+  if (analysis_mode == "cis_trans") {
+    exp_df$instrument_region <- "cis_trans"
+    return(exp_df)
+  }
+
+  if (!has_protein_coordinates(exposure_row)) {
+    stop("Analysis = cis_only requires protein coordinates for exposure: ", exposure_row$trait_id[[1]])
+  }
+
+  needed <- c("chr.exposure", "pos.exposure")
+  if (!all(needed %in% names(exp_df))) {
+    stop("Exposure data must contain columns for cis filtering: ", paste(needed, collapse = ", "))
+  }
+
+  protein_chr <- as.character(exposure_row$protein_chr_col[[1]])
+  start <- suppressWarnings(as.numeric(exposure_row$protein_start_col[[1]])) - CIS_WINDOW
+  end <- suppressWarnings(as.numeric(exposure_row$protein_end_col[[1]])) + CIS_WINDOW
+
+  exp_df %>%
+    dplyr::mutate(
+      instrument_region = dplyr::if_else(
+        as.character(.data$chr.exposure) == protein_chr &
+          suppressWarnings(as.numeric(.data$pos.exposure)) >= start &
+          suppressWarnings(as.numeric(.data$pos.exposure)) <= end,
+        "cis",
+        "trans"
+      )
+    ) %>%
+    dplyr::filter(.data$instrument_region == "cis")
 }
 
 get_sep_value <- function(x) {
@@ -71,12 +140,21 @@ safe_write_table <- function(dat, file) {
 write_per_task_summary <- function(summary_row, output_dir, exposure_name, outcome_name) {
   summary_dir <- file.path(output_dir, "proxy_application_summaries")
   dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
-  
+
+  file_stem <- paste0(make.names(exposure_name), "__", make.names(outcome_name))
+  if (
+    exists("include_analysis_in_name", inherits = TRUE) &&
+    isTRUE(include_analysis_in_name) &&
+    exists("analysis_mode", inherits = TRUE)
+  ) {
+    file_stem <- paste0(file_stem, "__", make.names(analysis_mode))
+  }
+
   out <- file.path(
     summary_dir,
-    paste0(make.names(exposure_name), "__", make.names(outcome_name), ".tsv")
+    paste0(file_stem, ".tsv")
   )
-  
+
   safe_write_table(summary_row, out)
 }
 
@@ -103,7 +181,7 @@ empty_no_proxy <- function() {
 }
 
 standardise_raw_gwas <- function(dat, row) {
-  
+
   required_cols <- c(
     row$snp_col[[1]],
     row$effect_col[[1]],
@@ -112,16 +190,16 @@ standardise_raw_gwas <- function(dat, row) {
     row$oa_col[[1]],
     row$pval_col[[1]]
   )
-  
+
   missing_required <- required_cols[!required_cols %in% names(dat)]
-  
+
   if (length(missing_required) > 0) {
     stop(
       "Raw exposure GWAS is missing required columns: ",
       paste(missing_required, collapse = ", ")
     )
   }
-  
+
   out <- data.frame(
     SNP = dat[[row$snp_col[[1]]]],
     beta = suppressWarnings(as.numeric(dat[[row$effect_col[[1]]]])),
@@ -131,45 +209,45 @@ standardise_raw_gwas <- function(dat, row) {
     pval = suppressWarnings(as.numeric(dat[[row$pval_col[[1]]]])),
     stringsAsFactors = FALSE
   )
-  
+
   if ("eaf_col" %in% names(row) && !is.na(row$eaf_col[[1]]) && row$eaf_col[[1]] != "" && row$eaf_col[[1]] %in% names(dat)) {
     out$eaf <- suppressWarnings(as.numeric(dat[[row$eaf_col[[1]]]]))
   } else {
     out$eaf <- NA_real_
   }
-  
+
   if ("chromosome_col" %in% names(row) && !is.na(row$chromosome_col[[1]]) && row$chromosome_col[[1]] != "" && row$chromosome_col[[1]] %in% names(dat)) {
     out$chr <- dat[[row$chromosome_col[[1]]]]
   } else {
     out$chr <- NA
   }
-  
+
   if ("position_col" %in% names(row) && !is.na(row$position_col[[1]]) && row$position_col[[1]] != "" && row$position_col[[1]] %in% names(dat)) {
     out$pos <- dat[[row$position_col[[1]]]]
   } else {
     out$pos <- NA
   }
-  
+
   if ("effect_type" %in% names(row)) {
     effect_type <- row$effect_type[[1]]
   } else {
     effect_type <- NA_character_
   }
-  
+
   if (!is.na(effect_type) && toupper(effect_type) == "OR") {
     out$beta <- log(out$beta)
   }
-  
+
   out <- out[!is.na(out$SNP) & out$SNP != "", , drop = FALSE]
   out <- out[!duplicated(out$SNP), , drop = FALSE]
-  
+
   out
 }
 
 format_proxy_exposure_data <- function(proxy_raw, exposure_id) {
-  
+
   proxy_raw$exposure <- exposure_id
-  
+
   TwoSampleMR::format_data(
     proxy_raw,
     type = "exposure",
@@ -184,6 +262,16 @@ format_proxy_exposure_data <- function(proxy_raw, exposure_id) {
     chr_col = "chr",
     pos_col = "pos"
   )
+}
+
+add_f_stat <- function(dat) {
+  needed <- c("beta.exposure", "se.exposure")
+  if (!all(needed %in% names(dat))) {
+    stop("Exposure data must contain columns: beta.exposure, se.exposure")
+  }
+
+  dat$F_stat <- suppressWarnings((as.numeric(dat$beta.exposure) / as.numeric(dat$se.exposure))^2)
+  dat
 }
 
 # -------------------------
@@ -216,6 +304,8 @@ pair <- plan[task_id, , drop = FALSE]
 
 exposure_id <- pair$exposure[[1]]
 outcome_id  <- pair$outcome[[1]]
+analysis_mode <- get_analysis_mode(pair)
+include_analysis_in_name <- "Analysis" %in% names(plan)
 
 if (!exposure_id %in% manifest$trait_id) {
   stop("Exposure trait_id not found in trait_manifest.csv: ", exposure_id)
@@ -223,12 +313,13 @@ if (!exposure_id %in% manifest$trait_id) {
 
 row <- manifest[match(exposure_id, manifest$trait_id), , drop = FALSE]
 
-safe_pair <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+safe_pair <- make_safe_pair(exposure_id, outcome_id, analysis_mode, include_analysis_in_name)
 
 message("========================================")
 message("Applying proxies")
 message("Exposure: ", exposure_id)
 message("Outcome : ", outcome_id)
+message("Analysis: ", analysis_mode)
 message("========================================")
 
 # -------------------------
@@ -246,6 +337,7 @@ done_file <- file.path(out_dir, paste0(safe_pair, ".__DONE"))
 result_row <- data.frame(
   exposure = exposure_id,
   outcome = outcome_id,
+  analysis = analysis_mode,
   status = "failed",
   err_message = "",
   original_exposure_snps = 0L,
@@ -254,6 +346,7 @@ result_row <- data.frame(
   original_retained = 0L,
   candidate_proxy_rows = 0L,
   best_proxy_rows = 0L,
+  proxy_f_filtered = 0L,
   proxies_added = 0L,
   final_total = 0L,
   no_proxy = 0L,
@@ -331,6 +424,8 @@ exp_df <- exposures %>%
   dplyr::filter(.data$exposure == exposure_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
 
+exp_df <- filter_exposure_by_analysis(exp_df, row, analysis_mode)
+
 out_df <- outcomes %>%
   dplyr::filter(.data$outcome == outcome_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
@@ -358,19 +453,19 @@ missing_snps <- setdiff(unique(exp_df$SNP), unique(out_df$SNP))
 result_row$missing_in_outcome <- length(missing_snps)
 
 if (length(missing_snps) == 0) {
-  
+
   result_row$status <- "completed"
   result_row$original_retained <- nrow(exp_df)
   result_row$final_total <- nrow(exp_df)
   result_row$err_message <- ""
-  
+
   safe_write_table(exp_df, out_data)
   safe_write_table(empty_proxy_map(), out_map)
   safe_write_table(empty_no_proxy(), out_noprx)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
-  
+
   file.create(done_file)
-  
+
   message("No missing SNPs. Original exposure data retained.")
   quit(save = "no", status = 0)
 }
@@ -411,7 +506,14 @@ if (nrow(proxies) == 0) {
       .data$missing_snp %in% missing_snps,
       .data$proxy_snp %in% out_df$SNP,
       .data$proxy_snp %in% raw_std$SNP
-    ) %>%
+    )
+
+  if ("analysis" %in% names(pair_proxies)) {
+    pair_proxies <- pair_proxies %>%
+      dplyr::filter(.data$analysis == analysis_mode)
+  }
+
+  pair_proxies <- pair_proxies %>%
     dplyr::mutate(
       R = if ("R" %in% names(.)) suppressWarnings(as.numeric(.data$R)) else NA_real_,
       R2 = suppressWarnings(as.numeric(.data$R2))
@@ -457,18 +559,18 @@ exp_clean <- exp_df %>%
 result_row$original_retained <- nrow(exp_clean)
 
 if (nrow(best_proxies) == 0) {
-  
+
   result_row$status <- "completed"
   result_row$final_total <- nrow(exp_clean)
   result_row$err_message <- "No valid proxies found"
-  
+
   safe_write_table(exp_clean, out_data)
   safe_write_table(empty_proxy_map(), out_map)
   safe_write_table(no_proxy_tbl, out_noprx)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
-  
+
   file.create(done_file)
-  
+
   message("No valid proxies found. Missing SNPs removed.")
   quit(save = "no", status = 0)
 }
@@ -499,7 +601,31 @@ proxy_fmt <- proxy_fmt %>%
     by = "SNP"
   )
 
-proxy_fmt_novel <- proxy_fmt %>%
+proxy_fmt <- add_f_stat(proxy_fmt)
+
+proxy_fmt_strong <- proxy_fmt %>%
+  dplyr::filter(!is.na(.data$F_stat), .data$F_stat > EXPOSURE_F_THRESHOLD)
+
+weak_proxy_snps <- setdiff(proxy_fmt$missing_snp, proxy_fmt_strong$missing_snp)
+
+if (length(weak_proxy_snps) > 0) {
+  no_proxy_tbl <- dplyr::bind_rows(
+    no_proxy_tbl,
+    data.frame(
+      exposure = exposure_id,
+      outcome = outcome_id,
+      missing_snp = weak_proxy_snps,
+      reason = paste0("Selected proxy failed F-statistic threshold > ", EXPOSURE_F_THRESHOLD),
+      stringsAsFactors = FALSE
+    )
+  ) %>%
+    dplyr::distinct(.data$exposure, .data$outcome, .data$missing_snp, .keep_all = TRUE)
+}
+
+result_row$proxy_f_filtered <- length(weak_proxy_snps)
+result_row$no_proxy <- nrow(no_proxy_tbl)
+
+proxy_fmt_novel <- proxy_fmt_strong %>%
   dplyr::anti_join(exp_clean, by = "SNP")
 
 final_df <- dplyr::bind_rows(exp_clean, proxy_fmt_novel)

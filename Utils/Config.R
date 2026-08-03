@@ -18,6 +18,7 @@ REF_PANEL_PREFIXES <- list(
 # ---- Exposure preparation thresholds ----
 EXPOSURE_MAF_THRESHOLD  <- 0.01
 EXPOSURE_PVAL_THRESHOLD <- 5e-8
+EXPOSURE_F_THRESHOLD    <- 10
 EXPOSURE_CLUMP_R2       <- 0.001
 EXPOSURE_CLUMP_KB       <- 10000
 
@@ -26,10 +27,19 @@ PROXY_TAG_R2   <- 0.8
 PROXY_TAG_KB   <- 5000
 PROXY_TAG_NSNP <- 5000
 
+# ---- Colocalization settings ----
+COLOC_H4_THRESHOLD <- 0.8
+COLOC_MIN_OVERLAP  <- 10
+
+# ---- Evidence appraisal settings ----
+EVIDENCE_ALPHA <- 0.05
+EVIDENCE_BONFERRONI_N_TESTS <- NA
+
 
 
 # ---- Cis vs Trans analysis ----
-cis_window <- 1e6
+CIS_WINDOW <- 1e6
+cis_window <- CIS_WINDOW
 #Protein locations should be provided by user in trait_manifest
 
 # Output subdirectories within the chosen output directory

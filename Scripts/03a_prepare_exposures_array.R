@@ -28,8 +28,13 @@ source("Utils/Config.R")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
+manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+if (!file.exists(manifest_path)) {
+  manifest_path <- file.path(input_dir, "trait_manifest.csv")
+}
+
 manifest <- read.csv(
-  file.path(input_dir, "trait_manifest.csv"),
+  manifest_path,
   stringsAsFactors = FALSE,
   check.names = FALSE
 )
@@ -56,18 +61,18 @@ get_sep_value <- function(x) {
 }
 
 calculate_maf_and_filter <- function(dat, eaf_col, maf_threshold = 0.01) {
-  
+
   if (!eaf_col %in% names(dat)) {
     stop("Column '", eaf_col, "' not found in raw exposure data")
   }
-  
+
   dat[[eaf_col]] <- suppressWarnings(as.numeric(dat[[eaf_col]]))
   dat$maf <- pmin(dat[[eaf_col]], 1 - dat[[eaf_col]])
-  
+
   n_before <- nrow(dat)
   dat <- dat[!is.na(dat$maf) & dat$maf >= maf_threshold, , drop = FALSE]
   n_after <- nrow(dat)
-  
+
   list(
     data = dat,
     removed = n_before - n_after
@@ -75,31 +80,49 @@ calculate_maf_and_filter <- function(dat, eaf_col, maf_threshold = 0.01) {
 }
 
 filter_significant_snps <- function(dat, pval_col, p_threshold = EXPOSURE_PVAL_THRESHOLD) {
-  
+
   if (!pval_col %in% names(dat)) {
     stop("Column '", pval_col, "' not found in raw exposure data")
   }
-  
+
   dat[[pval_col]] <- suppressWarnings(as.numeric(dat[[pval_col]]))
   dat <- dat[!is.na(dat[[pval_col]]), , drop = FALSE]
   dat[dat[[pval_col]] < p_threshold, , drop = FALSE]
 }
 
+calculate_f_stat_and_filter <- function(dat, f_threshold = EXPOSURE_F_THRESHOLD) {
+
+  needed <- c("beta.exposure", "se.exposure")
+  if (!all(needed %in% names(dat))) {
+    stop("Formatted exposure data must contain columns: beta.exposure, se.exposure")
+  }
+
+  dat$F_stat <- suppressWarnings((as.numeric(dat$beta.exposure) / as.numeric(dat$se.exposure))^2)
+
+  n_before <- nrow(dat)
+  dat <- dat[!is.na(dat$F_stat) & dat$F_stat > f_threshold, , drop = FALSE]
+
+  list(
+    data = dat,
+    removed = n_before - nrow(dat)
+  )
+}
+
 get_ref_panel_prefix <- function(build) {
   build <- trimws(as.character(build))
-  
+
   if (!build %in% names(REF_PANEL_PREFIXES)) {
     stop(
       "Unsupported genome build '", build, "'. Supported builds are: ",
       paste(names(REF_PANEL_PREFIXES), collapse = ", ")
     )
   }
-  
+
   ref_prefix <- REF_PANEL_PREFIXES[[build]]
-  
+
   needed <- paste0(ref_prefix, c(".bed", ".bim", ".fam"))
   missing <- needed[!file.exists(needed)]
-  
+
   if (length(missing) > 0) {
     stop(
       "Reference panel files not found for build '", build, "'. Missing: ",
@@ -107,25 +130,25 @@ get_ref_panel_prefix <- function(build) {
       ". Expected prefix: ", ref_prefix
     )
   }
-  
+
   ref_prefix
 }
 
 perform_ld_clumping_safe <- function(df, trait_name, build, snp_col, pval_col) {
-  
+
   if (nrow(df) == 0) {
     return(list(data = df, note = "No significant SNPs to clump"))
   }
-  
+
   ref_prefix <- get_ref_panel_prefix(build)
-  
+
   clump_input <- data.frame(
     rsid = df[[snp_col]],
     pval = df[[pval_col]],
     id   = trait_name,
     stringsAsFactors = FALSE
   )
-  
+
   clumped_snps <- ieugwasr::ld_clump(
     dat = clump_input,
     plink_bin = PLINK_BIN,
@@ -133,17 +156,17 @@ perform_ld_clumping_safe <- function(df, trait_name, build, snp_col, pval_col) {
     clump_kb = EXPOSURE_CLUMP_KB,
     clump_r2 = EXPOSURE_CLUMP_R2
   )
-  
+
   out <- dplyr::semi_join(df, clumped_snps, by = setNames("rsid", snp_col))
-  
+
   list(data = out, note = NULL)
 }
 write_per_task_summary <- function(summary_row, output_dir, exposure_name) {
   summary_dir <- file.path(output_dir, "per_task_summaries")
   dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
-  
+
   out <- file.path(summary_dir, paste0(exposure_name, ".tsv"))
-  
+
   write.table(
     summary_row,
     out,
@@ -202,6 +225,8 @@ result_row <- data.frame(
   rows_processed = 0L,
   maf_filtered_snps = 0L,
   significant_snps = 0L,
+  clumped_snps = 0L,
+  f_filtered_snps = 0L,
   final_snps = 0L,
   stringsAsFactors = FALSE
 )
@@ -225,6 +250,7 @@ raw_dat <- data.table::fread(
   data.table = FALSE,
   showProgress = FALSE
 )
+result_row$rows_processed <- nrow(raw_dat)
 
 # 2. MAF filter
 maf_res <- calculate_maf_and_filter(
@@ -234,6 +260,7 @@ maf_res <- calculate_maf_and_filter(
 )
 
 raw_dat_maf <- maf_res$data
+result_row$maf_filtered_snps <- maf_res$removed
 
 # 3. P-value filter
 sig_raw_dat <- filter_significant_snps(
@@ -241,6 +268,7 @@ sig_raw_dat <- filter_significant_snps(
   pval_col = row$pval_col[[1]],
   p_threshold = EXPOSURE_PVAL_THRESHOLD
 )
+result_row$significant_snps <- nrow(sig_raw_dat)
 
 # 4. LD clumping on raw filtered data
 clump_res <- perform_ld_clumping_safe(
@@ -252,6 +280,7 @@ clump_res <- perform_ld_clumping_safe(
 )
 
 clumped_raw_dat <- clump_res$data
+result_row$clumped_snps <- nrow(clumped_raw_dat)
 
 # 5. Format final clumped data with TwoSampleMR
 tmp_clumped_file <- file.path(
@@ -285,6 +314,10 @@ exp_dat <- TwoSampleMR::read_exposure_data(
 
 exp_dat$exposure <- trait_id
 exp_dat$id.exposure <- trait_id
+
+f_res <- calculate_f_stat_and_filter(exp_dat)
+exp_dat <- f_res$data
+result_row$f_filtered_snps <- f_res$removed
 
 # -------------------------
 # Save output

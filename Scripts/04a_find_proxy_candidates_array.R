@@ -29,8 +29,13 @@ source("Utils/Config.R")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
+manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+if (!file.exists(manifest_path)) {
+  manifest_path <- file.path(input_dir, "trait_manifest.csv")
+}
+
 manifest <- read.csv(
-  file.path(input_dir, "trait_manifest.csv"),
+  manifest_path,
   stringsAsFactors = FALSE,
   check.names = FALSE
 )
@@ -49,21 +54,85 @@ normalise_run_flag <- function(x) {
   tolower(as.character(x)) %in% c("true", "t", "1")
 }
 
+get_analysis_mode <- function(pair) {
+  if ("Analysis" %in% names(pair)) {
+    mode <- tolower(trimws(as.character(pair$Analysis[[1]])))
+    if (mode %in% c("cis_only", "cis_trans")) {
+      return(mode)
+    }
+  }
+
+  "cis_trans"
+}
+
+make_safe_pair <- function(exposure_id, outcome_id, analysis_mode, include_analysis) {
+  base <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+
+  if (include_analysis) {
+    return(paste0(base, "__", make.names(analysis_mode)))
+  }
+
+  base
+}
+
+has_protein_coordinates <- function(row) {
+  is_provided <- function(x) {
+    !(is.na(x) || trimws(as.character(x)) == "" ||
+        trimws(as.character(x)) %in% c("NA", "na", "Na", "n/a", "N/A"))
+  }
+
+  is_provided(row$protein_chr_col[[1]]) &&
+    is_provided(row$protein_start_col[[1]]) &&
+    is_provided(row$protein_end_col[[1]])
+}
+
+filter_exposure_by_analysis <- function(exp_df, exposure_row, analysis_mode) {
+  if (analysis_mode == "cis_trans") {
+    exp_df$instrument_region <- "cis_trans"
+    return(exp_df)
+  }
+
+  if (!has_protein_coordinates(exposure_row)) {
+    stop("Analysis = cis_only requires protein coordinates for exposure: ", exposure_row$trait_id[[1]])
+  }
+
+  needed <- c("chr.exposure", "pos.exposure")
+  if (!all(needed %in% names(exp_df))) {
+    stop("Exposure data must contain columns for cis filtering: ", paste(needed, collapse = ", "))
+  }
+
+  protein_chr <- as.character(exposure_row$protein_chr_col[[1]])
+  start <- suppressWarnings(as.numeric(exposure_row$protein_start_col[[1]])) - CIS_WINDOW
+  end <- suppressWarnings(as.numeric(exposure_row$protein_end_col[[1]])) + CIS_WINDOW
+
+  exp_df %>%
+    dplyr::mutate(
+      instrument_region = dplyr::if_else(
+        as.character(.data$chr.exposure) == protein_chr &
+          suppressWarnings(as.numeric(.data$pos.exposure)) >= start &
+          suppressWarnings(as.numeric(.data$pos.exposure)) <= end,
+        "cis",
+        "trans"
+      )
+    ) %>%
+    dplyr::filter(.data$instrument_region == "cis")
+}
+
 get_ref_panel_prefix <- function(build) {
   build <- trimws(as.character(build))
-  
+
   if (!build %in% names(REF_PANEL_PREFIXES)) {
     stop(
       "Unsupported genome build '", build, "'. Supported builds are: ",
       paste(names(REF_PANEL_PREFIXES), collapse = ", ")
     )
   }
-  
+
   ref_prefix <- REF_PANEL_PREFIXES[[build]]
-  
+
   needed <- paste0(ref_prefix, c(".bed", ".bim", ".fam"))
   missing <- needed[!file.exists(needed)]
-  
+
   if (length(missing) > 0) {
     stop(
       "Reference panel files not found for build '", build, "'. Missing: ",
@@ -71,19 +140,28 @@ get_ref_panel_prefix <- function(build) {
       ". Expected prefix: ", ref_prefix
     )
   }
-  
+
   ref_prefix
 }
 
 write_per_task_summary <- function(summary_row, output_dir, exposure_name, outcome_name) {
   summary_dir <- file.path(output_dir, "proxy_candidate_summaries")
   dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
-  
+
+  file_stem <- paste0(make.names(exposure_name), "__", make.names(outcome_name))
+  if (
+    exists("include_analysis_in_name", inherits = TRUE) &&
+    isTRUE(include_analysis_in_name) &&
+    exists("analysis_mode", inherits = TRUE)
+  ) {
+    file_stem <- paste0(file_stem, "__", make.names(analysis_mode))
+  }
+
   out <- file.path(
     summary_dir,
-    paste0(make.names(exposure_name), "__", make.names(outcome_name), ".tsv")
+    paste0(file_stem, ".tsv")
   )
-  
+
   write.table(
     summary_row,
     out,
@@ -97,6 +175,7 @@ empty_proxy_candidates <- function() {
   data.frame(
     exposure = character(),
     outcome = character(),
+    analysis = character(),
     build = character(),
     missing_snp = character(),
     proxy_snp = character(),
@@ -110,6 +189,7 @@ empty_missing_snps <- function() {
   data.frame(
     exposure = character(),
     outcome = character(),
+    analysis = character(),
     build = character(),
     missing_snp = character(),
     stringsAsFactors = FALSE
@@ -156,6 +236,8 @@ pair <- plan[task_id, , drop = FALSE]
 
 exposure_id <- pair$exposure[[1]]
 outcome_id  <- pair$outcome[[1]]
+analysis_mode <- get_analysis_mode(pair)
+include_analysis_in_name <- "Analysis" %in% names(plan)
 
 missing_traits <- setdiff(
   unique(c(exposure_id, outcome_id)),
@@ -172,7 +254,7 @@ if (length(missing_traits) > 0) {
 exposure_manifest <- manifest[match(exposure_id, manifest$trait_id), , drop = FALSE]
 build_val <- exposure_manifest$build[[1]]
 
-safe_pair <- paste0(make.names(exposure_id), "__", make.names(outcome_id))
+safe_pair <- make_safe_pair(exposure_id, outcome_id, analysis_mode, include_analysis_in_name)
 
 proxy_dir <- file.path(output_dir, "Proxy_candidates", "per_pair")
 dir.create(proxy_dir, recursive = TRUE, showWarnings = FALSE)
@@ -184,6 +266,7 @@ done_file      <- file.path(proxy_dir, paste0(safe_pair, ".__DONE"))
 result_row <- data.frame(
   exposure = exposure_id,
   outcome = outcome_id,
+  analysis = analysis_mode,
   build = build_val,
   status = "failed",
   err_message = "",
@@ -205,6 +288,7 @@ message("========================================")
 message("Finding proxy candidates")
 message("Exposure    : ", exposure_id)
 message("Outcome     : ", outcome_id)
+message("Analysis    : ", analysis_mode)
 message("Genome build: ", build_val)
 message("========================================")
 
@@ -255,6 +339,8 @@ exp_df <- exposures %>%
   dplyr::filter(.data$exposure == exposure_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
 
+exp_df <- filter_exposure_by_analysis(exp_df, exposure_manifest, analysis_mode)
+
 out_df <- outcomes %>%
   dplyr::filter(.data$outcome == outcome_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
@@ -284,23 +370,24 @@ result_row$missing_in_outcome <- length(missing_snps)
 if (length(missing_snps) == 0) {
   missing_tbl <- empty_missing_snps()
   candidates <- empty_proxy_candidates()
-  
+
   result_row$status <- "completed"
   result_row$err_message <- ""
-  
+
   safe_write_table(missing_tbl, out_missing)
   safe_write_table(candidates, out_candidates)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
-  
+
   file.create(done_file)
-  
+
   message("No missing SNPs for: ", exposure_id, " -> ", outcome_id)
   quit(save = "no", status = 0)
 }
 
-missing_tbl <- data.frame(
+  missing_tbl <- data.frame(
   exposure = exposure_id,
   outcome = outcome_id,
+  analysis = analysis_mode,
   build = build_val,
   missing_snp = missing_snps,
   stringsAsFactors = FALSE
@@ -339,17 +426,17 @@ result_row$raw_proxy_rows <- nrow(ld_raw)
 
 if (nrow(ld_raw) == 0) {
   candidates <- empty_proxy_candidates()
-  
+
   result_row$status <- "completed"
   if (result_row$err_message == "") {
     result_row$err_message <- "No LD proxies found"
   }
-  
+
   safe_write_table(candidates, out_candidates)
   write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
-  
+
   file.create(done_file)
-  
+
   message("No LD proxies found for: ", exposure_id, " -> ", outcome_id)
   quit(save = "no", status = 0)
 }
@@ -385,6 +472,7 @@ candidates <- ld_raw %>%
   dplyr::mutate(
     exposure = exposure_id,
     outcome = outcome_id,
+    analysis = analysis_mode,
     build = build_val,
     R = suppressWarnings(as.numeric(.data$R)),
     R2 = suppressWarnings(as.numeric(.data$R2))
@@ -393,6 +481,7 @@ candidates <- ld_raw %>%
   dplyr::select(
     exposure,
     outcome,
+    analysis,
     build,
     missing_snp,
     proxy_snp,

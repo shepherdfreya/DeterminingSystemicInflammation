@@ -98,6 +98,20 @@ if (any(!plan$run %in% valid_run_values)) {
 
 plan$run <- tolower(plan$run) %in% c("true", "t")
 
+if ("Analysis" %in% names(plan)) {
+  plan$Analysis <- tolower(trimws(as.character(plan$Analysis)))
+  valid_analysis_values <- c("cis_only", "cis_trans")
+
+  if (any(!plan$Analysis %in% valid_analysis_values)) {
+    bad_analysis <- unique(plan$Analysis[!plan$Analysis %in% valid_analysis_values])
+    stop(
+      "Invalid values in analysis_plan.csv 'Analysis' column: ",
+      paste(bad_analysis, collapse = ", "),
+      ". Use cis_only or cis_trans."
+    )
+  }
+}
+
 traits_in_manifest <- unique(manifest$trait_id)
 traits_in_plan <- unique(c(plan$exposure, plan$outcome))
 
@@ -116,9 +130,9 @@ is_provided <- function(x) {
 
 validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
   row <- manifest[i, ]
-  
+
   file_path <- file.path(input_dir, row$file)
-  
+
   if (!file.exists(file_path)) {
     return(data.frame(
       trait_id = row$trait_id,
@@ -130,9 +144,9 @@ validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
       stringsAsFactors = FALSE
     ))
   }
-  
+
   sep_value <- if (row$sep == "\\t") "\t" else row$sep
-  
+
   header <- tryCatch(
     names(data.table::fread(
       file_path,
@@ -143,7 +157,7 @@ validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
     )),
     error = function(e) NULL
   )
-  
+
   if (is.null(header)) {
     return(data.frame(
       trait_id = row$trait_id,
@@ -155,7 +169,7 @@ validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
       stringsAsFactors = FALSE
     ))
   }
-  
+
   required_mapped_cols <- c(
     row$snp_col,
     row$position_col,
@@ -167,11 +181,11 @@ validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
     row$eaf_col,
     row$chromosome_col
   )
-  
+
   required_mapped_cols <- unique(required_mapped_cols[vapply(required_mapped_cols, is_provided, logical(1))])
   missing_file_cols <- setdiff(required_mapped_cols, header)
   status <- if (length(missing_file_cols) == 0) "OK" else "FAIL"
-  
+
   data.frame(
     trait_id = row$trait_id,
     file = row$file,
@@ -210,7 +224,7 @@ if (any(validation_results$status == "FAIL")) {
 
 add_beta_if_or <- function(manifest_row, input_dir) {
   effect_name <- trimws(manifest_row$effect_col)
-  
+
   if (tolower(effect_name) != "or") {
     return(
       data.frame(
@@ -222,43 +236,43 @@ add_beta_if_or <- function(manifest_row, input_dir) {
       )
     )
   }
-  
+
   file_path <- file.path(input_dir, manifest_row$file)
   sep_value <- if (manifest_row$sep == "\\t") "\t" else manifest_row$sep
-  
+
   message("Checking OR-to-beta conversion for: ", manifest_row$trait_id)
-  
+
   dt <- data.table::fread(
     file_path,
     sep = sep_value,
     data.table = FALSE,
     showProgress = FALSE
   )
-  
+
   if ("beta" %in% names(dt)) {
     return(
       data.frame(
         trait_id = manifest_row$trait_id,
         file = manifest_row$file,
         action = "Skipped",
-        details = "beta column already present",
+        details = "beta column already present; standardised manifest will use effect_col = beta",
         stringsAsFactors = FALSE
       )
     )
   }
-  
+
   if (!(effect_name %in% names(dt))) {
     stop("Effect column '", effect_name, "' not found in file: ", manifest_row$file)
   }
-  
-  # Create backup 
+
+  # Create backup
   backup_path <- paste0(file_path, ".bak")
   if (!file.exists(backup_path)) {
     file.copy(file_path, backup_path, overwrite = FALSE)
   }
-  
+
   dt$beta <- log(as.numeric(dt[[effect_name]]))
-  
+
   # Overwrite original file
   data.table::fwrite(
     dt,
@@ -267,7 +281,7 @@ add_beta_if_or <- function(manifest_row, input_dir) {
     quote = FALSE,
     na = "NA"
   )
-  
+
   data.frame(
     trait_id = manifest_row$trait_id,
     file = manifest_row$file,
@@ -285,5 +299,12 @@ beta_update_results <- do.call(
 beta_update_path <- file.path(output_dir, "beta_column_updates.csv")
 write.csv(beta_update_results, beta_update_path, row.names = FALSE)
 
+standardised_manifest <- manifest
+or_rows <- tolower(trimws(standardised_manifest$effect_col)) == "or"
+standardised_manifest$effect_col[or_rows] <- "beta"
+
+standardised_manifest_path <- file.path(output_dir, "trait_manifest_standardised.csv")
+write.csv(standardised_manifest, standardised_manifest_path, row.names = FALSE)
+
 message("Beta-column update summary written to: ", beta_update_path)
-message("Manifest must be manually updated for any traits which were converted to beta")
+message("Standardised trait manifest written to: ", standardised_manifest_path)
