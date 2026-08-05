@@ -53,8 +53,8 @@ Where heterogeneity or pleiotropy tests were not applicable because too few SNPs
 | Tier | pQTL Class | Bonferroni Significant | FDR Significant | Colocalization `H4 > 0.8` | Heterogeneity | Pleiotropy | Steiger Direction |
 |---|---|---:|---:|---:|---:|---:|---:|
 | Tier A | Cis | Yes | Yes | Yes | Pass or Not applicable | Pass or Not applicable | Yes |
-| Tier B | Cis | No | Yes | Yes | Pass or Not applicable | Pass or Not applicable | Yes |
-| Tier C | Cis/Trans | Not required | Yes | Yes | Pass or Not applicable | Pass or Not applicable | Yes |
+| Tier B | Cis |  | Yes | Yes | Pass or Not applicable | Pass or Not applicable | Yes |
+| Tier C | Cis/Trans |  | Yes | Yes | Pass or Not applicable | Pass or Not applicable | Yes |
 | No Tier | Any | Criteria not met | Criteria not met | Criteria not met | Criteria not met | Criteria not met | Criteria not met |
 
 Rows that did not meet the criteria for Tier A, Tier B, or Tier C were assigned `No Tier`.
