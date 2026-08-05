@@ -1,0 +1,4 @@
+"trait_id","file","action","details"
+"CRP","CRP_example.tsv","No change","effect_col = beta"
+"IL6","IL6_example.tsv","No change","effect_col = beta"
+"Depression","Depression_example.tsv","No change","effect_col = beta"

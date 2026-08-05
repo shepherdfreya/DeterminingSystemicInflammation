@@ -60,6 +60,36 @@ get_sep_value <- function(x) {
   if (x == "\\t") "\t" else x
 }
 
+fread_args_for_path <- function(file_path) {
+  if (grepl("\\.gz$", file_path)) {
+    list(cmd = paste("gzip -dc", shQuote(file_path)))
+  } else {
+    list(file = file_path)
+  }
+}
+
+read_gwas_table <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+resolve_input_file <- function(input_dir, file_value) {
+  file_value <- trimws(as.character(file_value))
+  if (grepl("^(/|~)", file_value)) {
+    return(path.expand(file_value))
+  }
+  file.path(input_dir, file_value)
+}
+
 calculate_maf_and_filter <- function(dat, eaf_col, maf_threshold = 0.01) {
 
   if (!eaf_col %in% names(dat)) {
@@ -149,12 +179,26 @@ perform_ld_clumping_safe <- function(df, trait_name, build, snp_col, pval_col) {
     stringsAsFactors = FALSE
   )
 
-  clumped_snps <- ieugwasr::ld_clump(
-    dat = clump_input,
-    plink_bin = PLINK_BIN,
-    bfile = ref_prefix,
-    clump_kb = EXPOSURE_CLUMP_KB,
-    clump_r2 = EXPOSURE_CLUMP_R2
+  clumped_snps <- tryCatch(
+    ieugwasr::ld_clump(
+      dat = clump_input,
+      plink_bin = PLINK_BIN,
+      bfile = ref_prefix,
+      clump_kb = EXPOSURE_CLUMP_KB,
+      clump_r2 = EXPOSURE_CLUMP_R2
+    ),
+    error = function(e) {
+      msg <- conditionMessage(e)
+      no_clumps <- grepl("No significant --clump results", msg, ignore.case = TRUE) ||
+        grepl("\\.clumped", msg, ignore.case = TRUE) ||
+        grepl("cannot open the connection", msg, ignore.case = TRUE)
+
+      if (!no_clumps) {
+        stop(e)
+      }
+
+      return(clump_input[0, , drop = FALSE])
+    }
   )
 
   out <- dplyr::semi_join(df, clumped_snps, by = setNames("rsid", snp_col))
@@ -210,7 +254,7 @@ if (task_id > nrow(exposure_manifest)) {
 row <- exposure_manifest[task_id, , drop = FALSE]
 
 trait_id  <- row$trait_id[[1]]
-file_path <- file.path(input_dir, row$file[[1]])
+file_path <- resolve_input_file(input_dir, row$file[[1]])
 sep_value <- get_sep_value(row$sep[[1]])
 build_val <- row$build[[1]]
 
@@ -244,12 +288,7 @@ if (!file.exists(file_path)) {
 }
 
 # 1. Read raw GWAS
-raw_dat <- data.table::fread(
-  file_path,
-  sep = sep_value,
-  data.table = FALSE,
-  showProgress = FALSE
-)
+raw_dat <- read_gwas_table(file_path, sep_value)
 result_row$rows_processed <- nrow(raw_dat)
 
 # 2. MAF filter
@@ -281,6 +320,46 @@ clump_res <- perform_ld_clumping_safe(
 
 clumped_raw_dat <- clump_res$data
 result_row$clumped_snps <- nrow(clumped_raw_dat)
+
+outfile <- file.path(exposure_dir, paste0(trait_id, "_exposure_data.txt"))
+
+if (nrow(clumped_raw_dat) == 0) {
+  empty_exp <- data.frame(
+    SNP = character(),
+    `chr.exposure` = character(),
+    `pos.exposure` = numeric(),
+    `effect_allele.exposure` = character(),
+    `other_allele.exposure` = character(),
+    `eaf.exposure` = numeric(),
+    `beta.exposure` = numeric(),
+    `se.exposure` = numeric(),
+    `pval.exposure` = numeric(),
+    exposure = character(),
+    `mr_keep.exposure` = logical(),
+    `pval_origin.exposure` = character(),
+    `id.exposure` = character(),
+    `data_source.exposure` = character(),
+    F_stat = numeric(),
+    check.names = FALSE
+  )
+
+  write.table(
+    empty_exp,
+    file = outfile,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+
+  result_row$status <- "completed"
+  result_row$err_message <- "No SNPs remained after LD clumping"
+  result_row$final_snps <- 0L
+  write_per_task_summary(result_row, output_dir, trait_id)
+
+  message("No SNPs remained after LD clumping for: ", trait_id)
+  message("Written empty exposure file to: ", outfile)
+  quit(save = "no", status = 0)
+}
 
 # 5. Format final clumped data with TwoSampleMR
 tmp_clumped_file <- file.path(
@@ -318,12 +397,6 @@ exp_dat$id.exposure <- trait_id
 f_res <- calculate_f_stat_and_filter(exp_dat)
 exp_dat <- f_res$data
 result_row$f_filtered_snps <- f_res$removed
-
-# -------------------------
-# Save output
-# -------------------------
-
-outfile <- file.path(exposure_dir, paste0(trait_id, "_exposure_data.txt"))
 
 write.table(
   exp_dat,

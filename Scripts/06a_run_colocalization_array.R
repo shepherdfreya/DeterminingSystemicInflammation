@@ -66,6 +66,36 @@ get_sep_value <- function(x) {
   if (x == "\\t") "\t" else x
 }
 
+fread_args_for_path <- function(file_path) {
+  if (grepl("\\.gz$", file_path)) {
+    list(cmd = paste("gzip -dc", shQuote(file_path)))
+  } else {
+    list(file = file_path)
+  }
+}
+
+read_gwas_table <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+resolve_input_file <- function(input_dir, file_value) {
+  file_value <- trimws(as.character(file_value))
+  if (grepl("^(/|~)", file_value)) {
+    return(path.expand(file_value))
+  }
+  file.path(input_dir, file_value)
+}
+
 safe_write_table <- function(dat, file) {
   write.table(
     dat,
@@ -364,8 +394,8 @@ if (file.exists(done_file) && file.exists(out_file)) {
   quit(save = "no", status = 0)
 }
 
-exp_path <- file.path(input_dir, exposure_row$file[[1]])
-out_path <- file.path(input_dir, outcome_row$file[[1]])
+exp_path <- resolve_input_file(input_dir, exposure_row$file[[1]])
+out_path <- resolve_input_file(input_dir, outcome_row$file[[1]])
 
 if (!file.exists(exp_path)) {
   stop("Exposure GWAS file not found: ", exp_path)
@@ -374,19 +404,8 @@ if (!file.exists(out_path)) {
   stop("Outcome GWAS file not found: ", out_path)
 }
 
-exp_dat <- data.table::fread(
-  exp_path,
-  sep = get_sep_value(exposure_row$sep[[1]]),
-  data.table = FALSE,
-  showProgress = FALSE
-)
-
-out_dat <- data.table::fread(
-  out_path,
-  sep = get_sep_value(outcome_row$sep[[1]]),
-  data.table = FALSE,
-  showProgress = FALSE
-)
+exp_dat <- read_gwas_table(exp_path, get_sep_value(exposure_row$sep[[1]]))
+out_dat <- read_gwas_table(out_path, get_sep_value(outcome_row$sep[[1]]))
 
 exp_raw <- standardise_raw_gwas(exp_dat, exposure_row)
 out_raw <- standardise_raw_gwas(out_dat, outcome_row)

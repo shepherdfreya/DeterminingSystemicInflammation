@@ -1,0 +1,2 @@
+exposure	outcome	analysis	build	status	err_message	original_exposure_snps	outcome_snps	missing_in_outcome	raw_proxy_rows	proxy_rows_in_outcome	missing_with_candidate_proxy
+IL6	CRP	cis_trans	GRCh37	completed		2	121	0	0	0	0

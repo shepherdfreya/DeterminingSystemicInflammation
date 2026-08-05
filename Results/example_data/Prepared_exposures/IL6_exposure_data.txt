@@ -1,0 +1,3 @@
+SNP	effect_allele.exposure	other_allele.exposure	eaf.exposure	beta.exposure	se.exposure	pval.exposure	chr.exposure	pos.exposure	exposure	mr_keep.exposure	pval_origin.exposure	id.exposure	data_source.exposure	F_stat
+rs4537545	T	C	0.39366	0.090997	0.004563	8.39e-85	1	154418879	IL6	TRUE	reported	IL6	textfile	397.697821316577
+rs660895	G	A	0.186447	0.035794	0.005821	1.8e-09	6	32577380	IL6	TRUE	reported	IL6	textfile	37.8116186319099

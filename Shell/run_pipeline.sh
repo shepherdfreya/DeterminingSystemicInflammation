@@ -67,6 +67,10 @@ count_pairs() {
   Rscript -e 'args <- commandArgs(TRUE); plan <- read.csv(file.path(args[1], "analysis_plan.csv"), stringsAsFactors=FALSE); plan$run <- tolower(as.character(plan$run)) %in% c("true","t","1"); plan <- subset(plan, run); cat(nrow(plan))' "$INPUT_DIR"
 }
 
+count_proxy_pairs() {
+  Rscript -e 'args <- commandArgs(TRUE); plan <- read.csv(file.path(args[1], "analysis_plan.csv"), stringsAsFactors=FALSE); plan$run <- tolower(as.character(plan$run)) %in% c("true","t","1"); plan <- subset(plan, run); cat(nrow(unique(plan[, c("exposure", "outcome"), drop=FALSE])))' "$INPUT_DIR"
+}
+
 ############################################################
 # STEP 1: CHECK INPUTS (SERIAL)
 ############################################################
@@ -78,10 +82,12 @@ Rscript Scripts/01_check_inputs.R "$INPUT_DIR" "$OUTPUT_DIR"
 N_OUTCOMES=$(count_outcomes)
 N_EXPOSURES=$(count_exposures)
 N_PAIRS=$(count_pairs)
+N_PROXY_PAIRS=$(count_proxy_pairs)
 
 echo "Number of outcome tasks       : $N_OUTCOMES"
 echo "Number of exposure tasks      : $N_EXPOSURES"
-echo "Number of exposure-outcome pairs: $N_PAIRS"
+echo "Number of unique proxy-search pairs: $N_PROXY_PAIRS"
+echo "Number of exposure-outcome-analysis tasks: $N_PAIRS"
 
 if [ "$N_OUTCOMES" -eq 0 ]; then
   echo "No outcomes to process. Exiting."
@@ -95,6 +101,11 @@ fi
 
 if [ "$N_PAIRS" -eq 0 ]; then
   echo "No exposure-outcome pairs to process. Exiting."
+  exit 1
+fi
+
+if [ "$N_PROXY_PAIRS" -eq 0 ]; then
+  echo "No unique exposure-outcome pairs to process for proxy search. Exiting."
   exit 1
 fi
 
@@ -210,7 +221,7 @@ echo "Step 5: Finding proxy candidates after outcomes and exposures are ready"
 PROXY_CANDIDATES_JOB_ID=$(sbatch --parsable --dependency=afterok:${COMBINE_OUTCOME_JOB_ID}:${COMBINE_EXPOSURE_JOB_ID} <<EOF
 #!/bin/bash
 #SBATCH --job-name=find_proxies
-#SBATCH --array=1-${N_PAIRS}
+#SBATCH --array=1-${N_PROXY_PAIRS}
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=${PROXY_MEM}
 #SBATCH --time=${PROXY_TIME}
@@ -257,7 +268,7 @@ echo "Step 6: Applying proxies"
 APPLY_PROXY_JOB_ID=$(sbatch --parsable --dependency=afterok:${COMBINE_PROXY_JOB_ID} <<EOF
 #!/bin/bash
 #SBATCH --job-name=apply_proxies
-#SBATCH --array=1-${N_PAIRS}
+#SBATCH --array=1-${N_PROXY_PAIRS}
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=${PROXY_MEM}
 #SBATCH --time=${PROXY_TIME}

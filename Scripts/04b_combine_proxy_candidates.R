@@ -133,15 +133,35 @@ if (nrow(proxy_candidates) > 0) {
   }
 
   distinct_cols <- c("exposure", "outcome", "missing_snp", "proxy_snp")
-  if ("analysis" %in% names(proxy_candidates)) {
-    distinct_cols <- c("exposure", "outcome", "analysis", "missing_snp", "proxy_snp")
-  }
-
   proxy_candidates <- proxy_candidates[
     !duplicated(proxy_candidates[distinct_cols]),
     ,
     drop = FALSE
   ]
+}
+
+if (nrow(missing_snps) > 0) {
+  required_missing_cols <- c("exposure", "outcome", "missing_snp")
+
+  if (all(required_missing_cols %in% names(missing_snps))) {
+    missing_snps <- missing_snps[
+      !duplicated(missing_snps[required_missing_cols]),
+      ,
+      drop = FALSE
+    ]
+  }
+}
+
+if (nrow(proxy_summary) > 0) {
+  required_summary_cols <- c("exposure", "outcome")
+
+  if (all(required_summary_cols %in% names(proxy_summary))) {
+    proxy_summary <- proxy_summary[
+      !duplicated(proxy_summary[required_summary_cols]),
+      ,
+      drop = FALSE
+    ]
+  }
 }
 
 # -------------------------

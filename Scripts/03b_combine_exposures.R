@@ -35,6 +35,11 @@ if (length(files) == 0) {
 message("Combining ", length(files), " prepared exposure files...")
 
 exposure_list <- lapply(files, function(f) {
+  if (file.info(f)$size <= 1) {
+    warning("Skipping empty exposure file: ", f)
+    return(NULL)
+  }
+
   utils::read.table(
     f,
     header = TRUE,
@@ -43,6 +48,12 @@ exposure_list <- lapply(files, function(f) {
     check.names = FALSE
   )
 })
+
+exposure_list <- Filter(Negate(is.null), exposure_list)
+
+if (length(exposure_list) == 0) {
+  stop("No non-empty prepared exposure files found in: ", exposure_dir)
+}
 
 all_exposures <- dplyr::bind_rows(exposure_list)
 

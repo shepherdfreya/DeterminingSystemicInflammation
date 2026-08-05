@@ -1,0 +1,377 @@
+========================================
+Running local pipeline
+Date            : Mon Aug  3 14:06:45 BST 2026
+Input directory : /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpSjYftN/analysis_mode_input
+Output directory: Results/SmokeTestAnalysis
+Log file        : Results/SmokeTestAnalysis/pipeline_log.txt
+========================================
+
+Step 1: Checking inputs
+All required packages are installed and loaded.
+Error: trait_manifest.csv not found in: /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpSjYftN/analysis_mode_input
+Execution halted
+========================================
+Running local pipeline
+Date            : Mon Aug  3 14:08:17 BST 2026
+Input directory : /tmp/analysis_mode_input
+Output directory: Results/SmokeTestAnalysis
+Log file        : Results/SmokeTestAnalysis/pipeline_log.txt
+========================================
+
+Step 1: Checking inputs
+All required packages are installed and loaded.
+Input validation complete.
+Validation summary written to: Results/SmokeTestAnalysis/input_validation_summary.csv
+Active analysis plan written to: Results/SmokeTestAnalysis/active_analysis_plan.csv
+All listed GWAS files passed header validation.
+Beta-column update summary written to: Results/SmokeTestAnalysis/beta_column_updates.csv
+Standardised trait manifest written to: Results/SmokeTestAnalysis/trait_manifest_standardised.csv
+
+Step 2: Preparing outcomes locally
+Number of outcome tasks: 2
+
+Preparing outcome task 1 of 2
+All required packages are installed and loaded.
+Preparing outcome: CRP
+Using file: /tmp/analysis_mode_input/CRP_example.tsv
+Outcome preparation complete for: CRP
+Written to: Results/SmokeTestAnalysis/Prepared_outcomes/CRP_outcome_data.txt
+
+Preparing outcome task 2 of 2
+All required packages are installed and loaded.
+Preparing outcome: IL6
+Using file: /tmp/analysis_mode_input/IL6_example.tsv
+No phenotype name specified, defaulting to 'outcome'.
+Outcome preparation complete for: IL6
+Written to: Results/SmokeTestAnalysis/Prepared_outcomes/IL6_outcome_data.txt
+
+Step 3: Combining outcomes
+All required packages are installed and loaded.
+Combining 2 prepared outcome files...
+Combined outcome file written to: Results/SmokeTestAnalysis/all_outcomes.txt
+
+Step 4: Preparing exposures locally
+Number of exposure tasks: 2
+
+Preparing exposure task 1 of 2
+All required packages are installed and loaded.
+========================================
+Preparing exposure: IL6
+Input file        : /tmp/analysis_mode_input/IL6_example.tsv
+Genome build      : GRCh37
+========================================
+Clumping IL6, 2 variants, using: Data/Aux/EUR_HG19GRCh37/EUR_HG19GRCh37
+PLINK v1.9.0-b.7.7 64-bit (22 Oct 2024)            cog-genomics.org/plink/1.9/
+(C) 2005-2024 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpP44PKa/filea754c691580.log.
+Options in effect:
+  --bfile Data/Aux/EUR_HG19GRCh37/EUR_HG19GRCh37
+  --clump /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpP44PKa/filea754c691580
+  --clump-kb 10000
+  --clump-p1 0.99
+  --clump-r2 0.001
+  --out /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpP44PKa/filea754c691580
+
+24576 MB RAM detected; reserving 12288 MB for main workspace.
+8550156 variants loaded from .bim file.
+503 people (0 males, 0 females, 503 ambiguous) loaded from .fam.
+Ambiguous sex IDs written to
+/var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpP44PKa/filea754c691580.nosex
+.
+Using 1 thread (no multithreaded calculations invoked).
+Before main variant filters, 503 founders and 0 nonfounders present.
+Calculating allele frequencies... 0%1%2%3%4%5%6%7%8%9%10%11%12%13%14%15%16%17%18%19%20%21%22%23%24%25%26%27%28%29%30%31%32%33%34%35%36%37%38%39%40%41%42%43%44%45%46%47%48%49%50%51%52%53%54%55%56%57%58%59%60%61%62%63%64%65%66%67%68%69%70%71%72%73%74%75%76%77%78%79%80%81%82%83%84%85%86%87%88%89%90%91%92%93%94%95%96%97%98%99% done.
+Total genotyping rate is in [0.9999995, 1).
+8550156 variants and 503 people pass filters and QC.
+Note: No phenotypes present.
+--clump: 2 clumps formed from 2 top variants.
+Results written to
+/var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpP44PKa/filea754c691580.clumped
+.
+No phenotype name specified, defaulting to 'exposure'.
+Exposure preparation complete for: IL6
+Written to: Results/SmokeTestAnalysis/Prepared_exposures/IL6_exposure_data.txt
+
+Preparing exposure task 2 of 2
+All required packages are installed and loaded.
+========================================
+Preparing exposure: Depression
+Input file        : /tmp/analysis_mode_input/Depression_example.tsv
+Genome build      : GRCh37
+========================================
+Clumping Depression, 193 variants, using: Data/Aux/EUR_HG19GRCh37/EUR_HG19GRCh37
+PLINK v1.9.0-b.7.7 64-bit (22 Oct 2024)            cog-genomics.org/plink/1.9/
+(C) 2005-2024 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpGXMzQI/filea7639e73f81.log.
+Options in effect:
+  --bfile Data/Aux/EUR_HG19GRCh37/EUR_HG19GRCh37
+  --clump /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpGXMzQI/filea7639e73f81
+  --clump-kb 10000
+  --clump-p1 0.99
+  --clump-r2 0.001
+  --out /var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpGXMzQI/filea7639e73f81
+
+24576 MB RAM detected; reserving 12288 MB for main workspace.
+8550156 variants loaded from .bim file.
+503 people (0 males, 0 females, 503 ambiguous) loaded from .fam.
+Ambiguous sex IDs written to
+/var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpGXMzQI/filea7639e73f81.nosex
+.
+Using 1 thread (no multithreaded calculations invoked).
+Before main variant filters, 503 founders and 0 nonfounders present.
+Calculating allele frequencies... 0%1%2%3%4%5%6%7%8%9%10%11%12%13%14%15%16%17%18%19%20%21%22%23%24%25%26%27%28%29%30%31%32%33%34%35%36%37%38%39%40%41%42%43%44%45%46%47%48%49%50%51%52%53%54%55%56%57%58%59%60%61%62%63%64%65%66%67%68%69%70%71%72%73%74%75%76%77%78%79%80%81%82%83%84%85%86%87%88%89%90%91%92%93%94%95%96%97%98%99% done.
+Total genotyping rate is in [0.9999995, 1).
+8550156 variants and 503 people pass filters and QC.
+Note: No phenotypes present.
+--clump: 133 clumps formed from 193 top variants.
+Results written to
+/var/folders/28/sql494j12pgcm7h41chx8ddc0000gp/T//RtmpGXMzQI/filea7639e73f81.clumped
+.
+Removing 60 of 193 variants due to LD with other variants or absence from LD reference panel
+No phenotype name specified, defaulting to 'exposure'.
+Exposure preparation complete for: Depression
+Written to: Results/SmokeTestAnalysis/Prepared_exposures/Depression_exposure_data.txt
+
+Step 5: Combining exposures
+All required packages are installed and loaded.
+Combining 2 prepared exposure files...
+Combined exposure file written to: Results/SmokeTestAnalysis/all_exposures.txt
+Exposure processing summary written to: Results/SmokeTestAnalysis/processing_summary_exposures.txt
+Files successfully processed: 2
+Files failed: 0
+Files with no significant SNPs: 0
+Total files attempted: 2
+
+Step 6: Finding proxy candidates locally
+Number of exposure-outcome pairs: 4
+
+Finding proxy candidates for pair task 1 of 4
+All required packages are installed and loaded.
+========================================
+Finding proxy candidates
+Exposure    : IL6
+Outcome     : CRP
+Analysis    : cis_only
+Genome build: GRCh37
+========================================
+No missing SNPs for: IL6 -> CRP
+
+Finding proxy candidates for pair task 2 of 4
+All required packages are installed and loaded.
+========================================
+Finding proxy candidates
+Exposure    : IL6
+Outcome     : CRP
+Analysis    : cis_trans
+Genome build: GRCh37
+========================================
+No missing SNPs for: IL6 -> CRP
+
+Finding proxy candidates for pair task 3 of 4
+All required packages are installed and loaded.
+========================================
+Finding proxy candidates
+Exposure    : Depression
+Outcome     : CRP
+Analysis    : cis_trans
+Genome build: GRCh37
+========================================
+Finding proxies...
+Found 2862 proxies
+[1] TRUE
+Proxy candidate search complete for: Depression -> CRP
+Missing SNPs: 78
+Proxy rows in outcome: 64
+
+Finding proxy candidates for pair task 4 of 4
+All required packages are installed and loaded.
+========================================
+Finding proxy candidates
+Exposure    : Depression
+Outcome     : IL6
+Analysis    : cis_trans
+Genome build: GRCh37
+========================================
+Finding proxies...
+Found 2719 proxies
+[1] TRUE
+Proxy candidate search complete for: Depression -> IL6
+Missing SNPs: 73
+Proxy rows in outcome: 60
+
+Step 7: Combining proxy candidates
+All required packages are installed and loaded.
+Combining 4 proxy candidate files...
+Combined proxy candidate file written to: Results/SmokeTestAnalysis/Proxy_candidates/proxy_candidates.tsv
+Combined missing SNP file written to: Results/SmokeTestAnalysis/Proxy_candidates/missing_snps.tsv
+Combined proxy discovery summary written to: Results/SmokeTestAnalysis/Proxy_candidates/proxy_discovery_summary.tsv
+Proxy candidate rows: 124
+Missing SNP rows: 151
+Summary rows: 4
+Proxy searches completed: 4
+Proxy searches failed: 0
+
+Step 8: Applying proxies locally
+
+Applying proxies for pair task 1 of 4
+All required packages are installed and loaded.
+========================================
+Applying proxies
+Exposure: IL6
+Outcome : CRP
+Analysis: cis_only
+========================================
+No missing SNPs. Original exposure data retained.
+
+Applying proxies for pair task 2 of 4
+All required packages are installed and loaded.
+========================================
+Applying proxies
+Exposure: IL6
+Outcome : CRP
+Analysis: cis_trans
+========================================
+No missing SNPs. Original exposure data retained.
+
+Applying proxies for pair task 3 of 4
+All required packages are installed and loaded.
+========================================
+Applying proxies
+Exposure: Depression
+Outcome : CRP
+Analysis: cis_trans
+========================================
+[1] TRUE
+Finished applying proxies: Depression -> CRP
+Original SNPs retained: 55
+Proxy SNPs added: 64
+Final SNPs: 119
+
+Applying proxies for pair task 4 of 4
+All required packages are installed and loaded.
+========================================
+Applying proxies
+Exposure: Depression
+Outcome : IL6
+Analysis: cis_trans
+========================================
+[1] TRUE
+Finished applying proxies: Depression -> IL6
+Original SNPs retained: 60
+Proxy SNPs added: 60
+Final SNPs: 120
+
+Step 9: Running MR locally
+
+Running MR for pair task 1 of 4
+All required packages are installed and loaded.
+========================================
+Running MR
+Exposure: IL6
+Outcome : CRP
+Analysis: cis_only
+========================================
+Harmonising IL6 (IL6) and CRP (nxzTAy)
+Analysing 'IL6' on 'nxzTAy'
+[1] TRUE
+MR complete for: IL6 -> CRP
+MR rows: 1
+
+Running MR for pair task 2 of 4
+All required packages are installed and loaded.
+========================================
+Running MR
+Exposure: IL6
+Outcome : CRP
+Analysis: cis_trans
+========================================
+Harmonising IL6 (IL6) and CRP (nxzTAy)
+Analysing 'IL6' on 'nxzTAy'
+Warning messages:
+1: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.exposure"` instead of `.data$id.exposure` 
+2: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.outcome"` instead of `.data$id.outcome` 
+3: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"method"` instead of `.data$method` 
+4: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q"` instead of `.data$Q` 
+5: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_df"` instead of `.data$Q_df` 
+6: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_pval"` instead of `.data$Q_pval` 
+[1] TRUE
+MR complete for: IL6 -> CRP
+MR rows: 1
+
+Running MR for pair task 3 of 4
+All required packages are installed and loaded.
+========================================
+Running MR
+Exposure: Depression
+Outcome : CRP
+Analysis: cis_trans
+========================================
+Harmonising Depression (Depression) and CRP (nxzTAy)
+Removing the following SNPs for being palindromic with intermediate allele frequencies:
+rs108850, rs10939933, rs11065311, rs1441098, rs2030915, rs4466162
+Analysing 'Depression' on 'nxzTAy'
+Warning messages:
+1: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.exposure"` instead of `.data$id.exposure` 
+2: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.outcome"` instead of `.data$id.outcome` 
+3: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"method"` instead of `.data$method` 
+4: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q"` instead of `.data$Q` 
+5: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_df"` instead of `.data$Q_df` 
+6: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_pval"` instead of `.data$Q_pval` 
+[1] TRUE
+MR complete for: Depression -> CRP
+MR rows: 3
+
+Running MR for pair task 4 of 4
+All required packages are installed and loaded.
+========================================
+Running MR
+Exposure: Depression
+Outcome : IL6
+Analysis: cis_trans
+========================================
+Harmonising Depression (Depression) and IL6 (7GgrDV)
+Removing the following SNPs for being palindromic with intermediate allele frequencies:
+rs108850, rs10939933, rs11065311, rs1441098, rs2247523, rs4466162
+Analysing 'Depression' on '7GgrDV'
+Warning messages:
+1: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.exposure"` instead of `.data$id.exposure` 
+2: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"id.outcome"` instead of `.data$id.outcome` 
+3: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"method"` instead of `.data$method` 
+4: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q"` instead of `.data$Q` 
+5: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_df"` instead of `.data$Q_df` 
+6: Use of .data in tidyselect expressions was deprecated in tidyselect 1.2.0.
+ℹ Please use `"Q_pval"` instead of `.data$Q_pval` 
+[1] TRUE
+MR complete for: Depression -> IL6
+MR rows: 3
+
+Step 10: Combining MR outputs
+All required packages are installed and loaded.
+Combining 4 MR summary files...
+Combined MR summary written to: Results/SmokeTestAnalysis/mr_summary.tsv
+MR summary rows: 4
+Combining 4 MR result files...
+Combined MR results written to: Results/SmokeTestAnalysis/mr_results.tsv
+MR result rows: 8
+
+========================================
+Local pipeline completed successfully
+Date: Mon Aug  3 14:10:07 BST 2026
+========================================

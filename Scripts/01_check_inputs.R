@@ -128,10 +128,55 @@ is_provided <- function(x) {
   !(is.na(x) || trimws(x) == "" || trimws(x) %in% c("NA", "na", "Na", "n/a", "N/A"))
 }
 
+fread_args_for_path <- function(file_path) {
+  if (grepl("\\.gz$", file_path)) {
+    list(cmd = paste("gzip -dc", shQuote(file_path)))
+  } else {
+    list(file = file_path)
+  }
+}
+
+read_gwas_header <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        nrows = 0,
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+read_gwas_table <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+resolve_input_file <- function(input_dir, file_value) {
+  file_value <- trimws(as.character(file_value))
+  if (grepl("^(/|~)", file_value)) {
+    return(path.expand(file_value))
+  }
+  file.path(input_dir, file_value)
+}
+
 validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
   row <- manifest[i, ]
 
-  file_path <- file.path(input_dir, row$file)
+  file_path <- resolve_input_file(input_dir, row$file)
 
   if (!file.exists(file_path)) {
     return(data.frame(
@@ -148,13 +193,7 @@ validation_results <- lapply(seq_len(nrow(manifest)), function(i) {
   sep_value <- if (row$sep == "\\t") "\t" else row$sep
 
   header <- tryCatch(
-    names(data.table::fread(
-      file_path,
-      nrows = 0,
-      sep = sep_value,
-      data.table = FALSE,
-      showProgress = FALSE
-    )),
+    names(read_gwas_header(file_path, sep_value)),
     error = function(e) NULL
   )
 
@@ -237,17 +276,12 @@ add_beta_if_or <- function(manifest_row, input_dir) {
     )
   }
 
-  file_path <- file.path(input_dir, manifest_row$file)
+  file_path <- resolve_input_file(input_dir, manifest_row$file)
   sep_value <- if (manifest_row$sep == "\\t") "\t" else manifest_row$sep
 
   message("Checking OR-to-beta conversion for: ", manifest_row$trait_id)
 
-  dt <- data.table::fread(
-    file_path,
-    sep = sep_value,
-    data.table = FALSE,
-    showProgress = FALSE
-  )
+  dt <- read_gwas_table(file_path, sep_value)
 
   if ("beta" %in% names(dt)) {
     return(

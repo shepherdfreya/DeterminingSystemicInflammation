@@ -1,0 +1,5 @@
+exposure	outcome	analysis	status	err_message	exposure_snps	outcome_snps	harmonised_snps	mr_keep_snps	steiger_filter_applied	mr_rows
+Depression	CRP	cis_trans	completed	NA	119	121	119	113	TRUE	3
+Depression	IL6	cis_trans	completed	NA	120	122	120	114	TRUE	3
+IL6	CRP	cis_only	completed	NA	1	121	1	1	TRUE	1
+IL6	CRP	cis_trans	completed	NA	2	121	2	2	TRUE	1

@@ -8,14 +8,20 @@
 # Large/local inputs and reference panels
 Data/Raw/
 Data/Aux/
+Data/Main/
 
 # Pipeline outputs
-Results/
+Results/*
+!Results/example_data/
+!Results/example_data/**
 
 # Runtime logs
 *.log
 Shell/*.history
 
 # Keep small, redistributable examples under version control.
-!example_data/
-!example_data/**
+example_data/.DS_Store
+
+# Private/local data-preparation scripts
+Scripts/create_main_inputs.R
+Scripts/clean_decode_me_regenie.R

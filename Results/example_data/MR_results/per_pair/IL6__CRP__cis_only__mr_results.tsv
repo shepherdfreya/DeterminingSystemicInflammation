@@ -1,0 +1,2 @@
+id.exposure	id.outcome	outcome	exposure	method	nsnp	b	se	pval	lo_ci	up_ci	or	or_lci95	or_uci95	egger_intercept	egger_intercept_se	egger_intercept_pval	Q	Q_df	Q_pval	n_snps	analysis_set
+IL6	nxzTAy	CRP	IL6	Wald ratio	1	-0.930986735826456	0.0394738288075431	5.50560577874273e-123	-1.00835544028924	-0.853618031363671	0.39416458210509	0.364818452230402	0.425871325411903	NA	NA	NA	NA	NA	NA	1	cis_only

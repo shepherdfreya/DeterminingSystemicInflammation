@@ -34,16 +34,20 @@ if (length(files) == 0) {
 message("Combining ", length(files), " prepared outcome files...")
 
 outcome_list <- lapply(files, function(f) {
-  read.table(
+  data.table::fread(
     f,
-    header = TRUE,
     sep = "\t",
-    stringsAsFactors = FALSE,
+    data.table = FALSE,
+    showProgress = FALSE,
     check.names = FALSE
   )
 })
 
-all_outcomes <- do.call(rbind, outcome_list)
+all_outcomes <- data.table::rbindlist(
+  outcome_list,
+  use.names = TRUE,
+  fill = TRUE
+)
 
 combined_file <- file.path(output_dir, "all_outcomes.txt")
 

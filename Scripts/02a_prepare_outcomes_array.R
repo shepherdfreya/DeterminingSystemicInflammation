@@ -47,6 +47,36 @@ plan <- read.csv(
   check.names = FALSE
 )
 
+fread_args_for_path <- function(file_path) {
+  if (grepl("\\.gz$", file_path)) {
+    list(cmd = paste("gzip -dc", shQuote(file_path)))
+  } else {
+    list(file = file_path)
+  }
+}
+
+read_gwas_table <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+resolve_input_file <- function(input_dir, file_value) {
+  file_value <- trimws(as.character(file_value))
+  if (grepl("^(/|~)", file_value)) {
+    return(path.expand(file_value))
+  }
+  file.path(input_dir, file_value)
+}
+
 # Keep only active analyses
 plan$run <- tolower(as.character(plan$run)) %in% c("true", "t", "1")
 plan <- subset(plan, run)
@@ -83,20 +113,22 @@ outcome_dir <- file.path(output_dir, "Prepared_outcomes")
 dir.create(outcome_dir, recursive = TRUE, showWarnings = FALSE)
 
 prepare_one_outcome <- function(row, input_dir) {
-  file_path <- file.path(input_dir, row$file)
-  
+  file_path <- resolve_input_file(input_dir, row$file)
+
   if (!file.exists(file_path)) {
     stop("GWAS file not found: ", file_path)
   }
-  
+
   sep_value <- if (row$sep == "\\t") "\t" else row$sep
-  
+
   message("Preparing outcome: ", row$trait_id)
   message("Using file: ", file_path)
-  
-  out <- TwoSampleMR::read_outcome_data(
-    filename = file_path,
-    sep = sep_value,
+
+  raw_dat <- read_gwas_table(file_path, sep_value)
+
+  out <- TwoSampleMR::format_data(
+    dat = raw_dat,
+    type = "outcome",
     snp_col = row$snp_col,
     beta_col = row$effect_col,
     se_col = row$se_col,
@@ -107,7 +139,7 @@ prepare_one_outcome <- function(row, input_dir) {
     chr_col = row$chromosome_col,
     pos_col = row$position_col
   )
-  
+
   out$outcome <- row$trait_id
   out
 }

@@ -1,0 +1,2 @@
+exposure	outcome	analysis	status	err_message	original_exposure_snps	outcome_snps	missing_in_outcome	original_retained	candidate_proxy_rows	best_proxy_rows	proxy_f_filtered	proxies_added	final_total	no_proxy
+Depression	IL6	cis_trans	completed		133	122	73	60	60	60	0	60	120	13

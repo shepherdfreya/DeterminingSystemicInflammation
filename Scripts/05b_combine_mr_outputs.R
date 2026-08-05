@@ -24,14 +24,30 @@ read_many_tables <- function(files) {
   }
 
   dat_list <- lapply(files, function(f) {
-    utils::read.table(
-      f,
-      header = TRUE,
-      sep = "\t",
-      stringsAsFactors = FALSE,
-      check.names = FALSE
+    if (file.info(f)$size <= 1) {
+      return(NULL)
+    }
+
+    tryCatch(
+      utils::read.table(
+        f,
+        header = TRUE,
+        sep = "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      ),
+      error = function(e) {
+        warning("Skipping unreadable table: ", f, " (", conditionMessage(e), ")")
+        NULL
+      }
     )
   })
+
+  dat_list <- Filter(Negate(is.null), dat_list)
+
+  if (length(dat_list) == 0) {
+    return(data.frame())
+  }
 
   dplyr::bind_rows(dat_list)
 }

@@ -1,0 +1,4 @@
+"trait_id","file","file_exists","header_read","missing_columns","status"
+"CRP","CRP_example.tsv",TRUE,TRUE,"","OK"
+"IL6","IL6_example.tsv",TRUE,TRUE,"","OK"
+"Depression","Depression_example.tsv",TRUE,TRUE,"","OK"

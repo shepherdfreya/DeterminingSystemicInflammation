@@ -343,6 +343,7 @@ analysis_mode <- get_analysis_mode(pair)
 include_analysis_in_name <- "Analysis" %in% names(plan)
 
 safe_pair <- make_safe_pair(exposure_id, outcome_id, analysis_mode, include_analysis_in_name)
+shared_proxy_pair <- make_safe_pair(exposure_id, outcome_id, "all", FALSE)
 
 message("========================================")
 message("Running MR")
@@ -393,8 +394,19 @@ exposure_file <- file.path(
   output_dir,
   "Proxied_exposures",
   "per_pair",
+  paste0(shared_proxy_pair, "__exposure_proxied.tsv")
+)
+
+legacy_exposure_file <- file.path(
+  output_dir,
+  "Proxied_exposures",
+  "per_pair",
   paste0(safe_pair, "__exposure_proxied.tsv")
 )
+
+if (!file.exists(exposure_file) && file.exists(legacy_exposure_file)) {
+  exposure_file <- legacy_exposure_file
+}
 
 outcome_file <- file.path(output_dir, "all_outcomes.txt")
 
@@ -418,6 +430,20 @@ exp_dat <- data.table::fread(
 
 exposure_row <- manifest[match(exposure_id, manifest$trait_id), , drop = FALSE]
 exp_dat <- filter_exposure_by_analysis(exp_dat, exposure_row, analysis_mode)
+
+if (nrow(exp_dat) == 0) {
+  result_row$status <- "completed"
+  result_row$err_message <- paste("No exposure instruments retained after", analysis_mode, "filtering")
+  result_row$exposure_snps <- 0L
+
+  safe_write_table(data.frame(), out_mr)
+  safe_write_table(data.frame(), out_harmonised)
+  write_per_task_summary(result_row, output_dir, exposure_id, outcome_id)
+  file.create(done_file)
+
+  message(result_row$err_message)
+  quit(save = "no", status = 0)
+}
 
 # -------------------------
 # Standardise exposure IDs

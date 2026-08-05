@@ -1,0 +1,2 @@
+exposure	outcome	analysis	status	err_message	exposure_snps	outcome_snps	harmonised_snps	mr_keep_snps	steiger_filter_applied	mr_rows
+IL6	CRP	cis_only	completed		1	121	1	1	TRUE	1

@@ -1,0 +1,2 @@
+exposure	outcome	analysis	locus_id	chr	start	end	n_overlap	status	err_message	PP.H0.abf	PP.H1.abf	PP.H2.abf	PP.H3.abf	PP.H4.abf	H4_threshold	H4_flag
+IL6	CRP	cis_only	IL6_cis_region	1	153377669	155441926	1	failed	Fewer than COLOC_MIN_OVERLAP overlapping SNPs: 1 < 10	NA	NA	NA	NA	NA	0.8	Fail

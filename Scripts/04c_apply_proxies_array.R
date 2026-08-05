@@ -77,54 +77,41 @@ make_safe_pair <- function(exposure_id, outcome_id, analysis_mode, include_analy
   base
 }
 
-is_provided <- function(x) {
-  !(is.na(x) || trimws(as.character(x)) == "" ||
-      trimws(as.character(x)) %in% c("NA", "na", "Na", "n/a", "N/A"))
-}
-
-has_protein_coordinates <- function(row) {
-  is_provided(row$protein_chr_col[[1]]) &&
-    is_provided(row$protein_start_col[[1]]) &&
-    is_provided(row$protein_end_col[[1]])
-}
-
-filter_exposure_by_analysis <- function(exp_df, exposure_row, analysis_mode) {
-  if (analysis_mode == "cis_trans") {
-    exp_df$instrument_region <- "cis_trans"
-    return(exp_df)
-  }
-
-  if (!has_protein_coordinates(exposure_row)) {
-    stop("Analysis = cis_only requires protein coordinates for exposure: ", exposure_row$trait_id[[1]])
-  }
-
-  needed <- c("chr.exposure", "pos.exposure")
-  if (!all(needed %in% names(exp_df))) {
-    stop("Exposure data must contain columns for cis filtering: ", paste(needed, collapse = ", "))
-  }
-
-  protein_chr <- as.character(exposure_row$protein_chr_col[[1]])
-  start <- suppressWarnings(as.numeric(exposure_row$protein_start_col[[1]])) - CIS_WINDOW
-  end <- suppressWarnings(as.numeric(exposure_row$protein_end_col[[1]])) + CIS_WINDOW
-
-  exp_df %>%
-    dplyr::mutate(
-      instrument_region = dplyr::if_else(
-        as.character(.data$chr.exposure) == protein_chr &
-          suppressWarnings(as.numeric(.data$pos.exposure)) >= start &
-          suppressWarnings(as.numeric(.data$pos.exposure)) <= end,
-        "cis",
-        "trans"
-      )
-    ) %>%
-    dplyr::filter(.data$instrument_region == "cis")
-}
-
 get_sep_value <- function(x) {
   if (is.na(x) || x == "") {
     stop("Missing 'sep' value in trait_manifest.csv")
   }
   if (x == "\\t") "\t" else x
+}
+
+fread_args_for_path <- function(file_path) {
+  if (grepl("\\.gz$", file_path)) {
+    list(cmd = paste("gzip -dc", shQuote(file_path)))
+  } else {
+    list(file = file_path)
+  }
+}
+
+read_gwas_table <- function(file_path, sep_value) {
+  do.call(
+    data.table::fread,
+    c(
+      fread_args_for_path(file_path),
+      list(
+        sep = sep_value,
+        data.table = FALSE,
+        showProgress = FALSE
+      )
+    )
+  )
+}
+
+resolve_input_file <- function(input_dir, file_value) {
+  file_value <- trimws(as.character(file_value))
+  if (grepl("^(/|~)", file_value)) {
+    return(path.expand(file_value))
+  }
+  file.path(input_dir, file_value)
 }
 
 safe_write_table <- function(dat, file) {
@@ -293,19 +280,21 @@ if (nrow(plan) == 0) {
   stop("No rows with run = TRUE found in analysis_plan.csv")
 }
 
-if (task_id > nrow(plan)) {
+pair_plan <- unique(plan[, c("exposure", "outcome"), drop = FALSE])
+
+if (task_id > nrow(pair_plan)) {
   stop(
     "task_id ", task_id, " is out of range. There are only ",
-    nrow(plan), " active exposure-outcome pairs."
+    nrow(pair_plan), " unique active exposure-outcome pairs for proxy application."
   )
 }
 
-pair <- plan[task_id, , drop = FALSE]
+pair <- pair_plan[task_id, , drop = FALSE]
 
 exposure_id <- pair$exposure[[1]]
 outcome_id  <- pair$outcome[[1]]
-analysis_mode <- get_analysis_mode(pair)
-include_analysis_in_name <- "Analysis" %in% names(plan)
+analysis_mode <- "all"
+include_analysis_in_name <- FALSE
 
 if (!exposure_id %in% manifest$trait_id) {
   stop("Exposure trait_id not found in trait_manifest.csv: ", exposure_id)
@@ -319,7 +308,7 @@ message("========================================")
 message("Applying proxies")
 message("Exposure: ", exposure_id)
 message("Outcome : ", outcome_id)
-message("Analysis: ", analysis_mode)
+message("Analysis: shared across analysis modes")
 message("========================================")
 
 # -------------------------
@@ -424,8 +413,6 @@ exp_df <- exposures %>%
   dplyr::filter(.data$exposure == exposure_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
 
-exp_df <- filter_exposure_by_analysis(exp_df, row, analysis_mode)
-
 out_df <- outcomes %>%
   dplyr::filter(.data$outcome == outcome_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
@@ -474,7 +461,7 @@ if (length(missing_snps) == 0) {
 # Read full exposure GWAS
 # -------------------------
 
-file_path <- file.path(input_dir, row$file[[1]])
+file_path <- resolve_input_file(input_dir, row$file[[1]])
 sep_value <- get_sep_value(row$sep[[1]])
 
 if (!file.exists(file_path)) {
@@ -483,12 +470,7 @@ if (!file.exists(file_path)) {
   stop(result_row$err_message)
 }
 
-raw_dat <- data.table::fread(
-  file_path,
-  sep = sep_value,
-  data.table = FALSE,
-  showProgress = FALSE
-)
+raw_dat <- read_gwas_table(file_path, sep_value)
 
 raw_std <- standardise_raw_gwas(raw_dat, row)
 
@@ -507,11 +489,6 @@ if (nrow(proxies) == 0) {
       .data$proxy_snp %in% out_df$SNP,
       .data$proxy_snp %in% raw_std$SNP
     )
-
-  if ("analysis" %in% names(pair_proxies)) {
-    pair_proxies <- pair_proxies %>%
-      dplyr::filter(.data$analysis == analysis_mode)
-  }
 
   pair_proxies <- pair_proxies %>%
     dplyr::mutate(

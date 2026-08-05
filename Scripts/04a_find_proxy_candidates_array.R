@@ -75,49 +75,6 @@ make_safe_pair <- function(exposure_id, outcome_id, analysis_mode, include_analy
   base
 }
 
-has_protein_coordinates <- function(row) {
-  is_provided <- function(x) {
-    !(is.na(x) || trimws(as.character(x)) == "" ||
-        trimws(as.character(x)) %in% c("NA", "na", "Na", "n/a", "N/A"))
-  }
-
-  is_provided(row$protein_chr_col[[1]]) &&
-    is_provided(row$protein_start_col[[1]]) &&
-    is_provided(row$protein_end_col[[1]])
-}
-
-filter_exposure_by_analysis <- function(exp_df, exposure_row, analysis_mode) {
-  if (analysis_mode == "cis_trans") {
-    exp_df$instrument_region <- "cis_trans"
-    return(exp_df)
-  }
-
-  if (!has_protein_coordinates(exposure_row)) {
-    stop("Analysis = cis_only requires protein coordinates for exposure: ", exposure_row$trait_id[[1]])
-  }
-
-  needed <- c("chr.exposure", "pos.exposure")
-  if (!all(needed %in% names(exp_df))) {
-    stop("Exposure data must contain columns for cis filtering: ", paste(needed, collapse = ", "))
-  }
-
-  protein_chr <- as.character(exposure_row$protein_chr_col[[1]])
-  start <- suppressWarnings(as.numeric(exposure_row$protein_start_col[[1]])) - CIS_WINDOW
-  end <- suppressWarnings(as.numeric(exposure_row$protein_end_col[[1]])) + CIS_WINDOW
-
-  exp_df %>%
-    dplyr::mutate(
-      instrument_region = dplyr::if_else(
-        as.character(.data$chr.exposure) == protein_chr &
-          suppressWarnings(as.numeric(.data$pos.exposure)) >= start &
-          suppressWarnings(as.numeric(.data$pos.exposure)) <= end,
-        "cis",
-        "trans"
-      )
-    ) %>%
-    dplyr::filter(.data$instrument_region == "cis")
-}
-
 get_ref_panel_prefix <- function(build) {
   build <- trimws(as.character(build))
 
@@ -225,19 +182,21 @@ if (nrow(plan) == 0) {
   stop("No rows with run = TRUE found in analysis_plan.csv")
 }
 
-if (task_id > nrow(plan)) {
+pair_plan <- unique(plan[, c("exposure", "outcome"), drop = FALSE])
+
+if (task_id > nrow(pair_plan)) {
   stop(
     "task_id ", task_id, " is out of range. There are only ",
-    nrow(plan), " active exposure-outcome pairs."
+    nrow(pair_plan), " unique active exposure-outcome pairs for proxy search."
   )
 }
 
-pair <- plan[task_id, , drop = FALSE]
+pair <- pair_plan[task_id, , drop = FALSE]
 
 exposure_id <- pair$exposure[[1]]
 outcome_id  <- pair$outcome[[1]]
-analysis_mode <- get_analysis_mode(pair)
-include_analysis_in_name <- "Analysis" %in% names(plan)
+analysis_mode <- "all"
+include_analysis_in_name <- FALSE
 
 missing_traits <- setdiff(
   unique(c(exposure_id, outcome_id)),
@@ -288,7 +247,7 @@ message("========================================")
 message("Finding proxy candidates")
 message("Exposure    : ", exposure_id)
 message("Outcome     : ", outcome_id)
-message("Analysis    : ", analysis_mode)
+message("Analysis    : shared across analysis modes")
 message("Genome build: ", build_val)
 message("========================================")
 
@@ -338,8 +297,6 @@ if (!all(c("SNP", "outcome") %in% names(outcomes))) {
 exp_df <- exposures %>%
   dplyr::filter(.data$exposure == exposure_id) %>%
   dplyr::distinct(.data$SNP, .keep_all = TRUE)
-
-exp_df <- filter_exposure_by_analysis(exp_df, exposure_manifest, analysis_mode)
 
 out_df <- outcomes %>%
   dplyr::filter(.data$outcome == outcome_id) %>%

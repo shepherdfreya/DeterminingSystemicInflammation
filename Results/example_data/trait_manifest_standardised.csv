@@ -1,0 +1,4 @@
+"trait_id","file","samplesize","sep","snp_col","position_col","effect_col","se_col","ea_col","oa_col","pval_col","build","eaf_col","chromosome_col","protein_start_col","protein_end_col","protein_chr_col"
+"CRP","CRP_example.tsv",204402,"\t","rsid","position","beta","se","effect_allele","other_allele","pval","GRCh37","eaf","chr",159682079,159684379,1
+"IL6","IL6_example.tsv",67428,"\t","rsid","position","beta","se","effect_allele","other_allele","pval","GRCh37","eaf","chr",154377669,154441926,1
+"Depression","Depression_example.tsv",674452,"\t","rsid","position","beta","se","effect_allele","other_allele","pval","GRCh37","eaf","chr",NA,NA,NA

@@ -1,0 +1,5 @@
+"exposure","outcome","run","Analysis"
+"IL6","CRP",TRUE,"cis_only"
+"IL6","CRP",TRUE,"cis_trans"
+"Depression","CRP",TRUE,"cis_trans"
+"Depression","IL6",TRUE,"cis_trans"

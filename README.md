@@ -27,6 +27,9 @@ At the current stage, the pipeline includes:
 - exposure preparation, including significance filtering and LD clumping
 - LD proxy identification for exposure SNPs missing from outcome GWAS files
 - application of best available proxies to exposure datasets before harmonisation
+- MR with Steiger filtering, heterogeneity tests, and MR-Egger intercept tests where applicable
+- optional genetic colocalization
+- evidence appraisal using tiered criteria
 
 ------------------------------------------------------------------------
 
@@ -161,6 +164,8 @@ cis_trans
 
 Use `cis_only` for protein exposures where instruments should be restricted to the protein coordinate window. Use `cis_trans` to include all retained instruments. The cis window is defined in `Utils/Config.R` as `CIS_WINDOW <- 1e6`, meaning plus or minus 1 Mb around the protein start/end coordinates supplied in `trait_manifest.csv`.
 
+The `Analysis` value is carried through MR for naming and summaries, but proxy candidate search and proxy application are de-duplicated across unique exposure-outcome pairs. The cis-only instrument restriction is applied immediately before MR in `Scripts/05a_run_mr_array.R`. This allows proxy recovery to use the full prepared exposure set before the final cis/trans MR split is made.
+
 ------------------------------------------------------------------------
 
 # Configuration and Settings
@@ -266,6 +271,12 @@ If using a project-local R library, prefix the command with `R_LIBS_USER`:
 R_LIBS_USER="$(pwd)/.r-lib" bash Shell/run_pipeline_local.sh example_data Results/ExampleRun
 ```
 
+The local wrapper runs outcome preparation, exposure preparation, proxy finding, proxy application, MR, MR output combination, and evidence appraisal. Colocalization is optional because it can be expensive:
+
+``` bash
+RUN_COLOC=TRUE bash Shell/run_pipeline_local.sh example_data Results/ExampleRun
+```
+
 The second argument names the output folder. For example, `Results/ExampleRun`, `Results/TestRun`, and `Results/SmokeTest` are separate runs created by passing different output directories.
 
 For SLURM execution from the project root, run:
@@ -300,7 +311,7 @@ Useful flags:
 
 | Setting | Default | Purpose |
 |----|----|----|
-| `RUN_COLOC` | `FALSE` | Submit colocalization array and combine jobs |
+| `RUN_COLOC` | `FALSE` | Run colocalization and combine colocalization outputs |
 | `RUN_APPRAISAL` | `TRUE` | Run `Scripts/07_evidence_appraisal.R` after MR, or after colocalization if enabled |
 | `R_MODULE` | `R` | Module name loaded inside each SLURM job |
 | `OUTCOME_MEM`, `OUTCOME_TIME` | `8G`, `02:00:00` | Resources for outcome preparation |
@@ -311,6 +322,12 @@ Useful flags:
 | `COMBINE_MEM`, `COMBINE_TIME` | `4G`, `01:00:00` | Resources for serial combine/appraisal jobs |
 
 For real runs with thousands of proteins, start with a pilot manifest containing a small active subset, check `Results/<run>/pipeline_log.txt`, the files under `Results/<run>/logs/`, `mr_summary.tsv`, `mr_results.tsv`, and `evidence_appraisal.tsv`, then scale up by increasing the number of active rows in `analysis_plan.csv`.
+
+The evidence appraisal criteria are also summarised in:
+
+``` text
+docs/evidence_appraisal_criteria.md
+```
 
 The example files are small extracts of redistributable GWAS summary statistics. They are intended for checking installation and demonstrating the workflow, not for scientific interpretation.
 
@@ -406,6 +423,8 @@ For each exposure-outcome pair, this script:
 5.  Keeps only proxies present in the outcome GWAS
 6.  Writes pair-specific proxy candidate files
 
+Proxy candidate search is performed once per unique exposure-outcome pair, even when `analysis_plan.csv` contains both `cis_only` and `cis_trans` rows for the same pair. It does not apply the cis-only filter; cis-only filtering is applied later, immediately before MR.
+
 Outputs are written to:
 
 ``` text
@@ -473,6 +492,8 @@ For each exposure-outcome pair, this script:
 8.  Applies the same F-statistic filter to proxy rows
 9.  Merges proxy rows into the exposure dataset
 10. Writes pair-specific proxied exposure files
+
+Proxy application is performed once per unique exposure-outcome pair, even when `analysis_plan.csv` contains both `cis_only` and `cis_trans` rows for the same pair. It reuses the shared exposure-outcome proxy candidates for all analysis modes and does not apply the cis-only filter; the final cis-only restriction is applied in the MR step.
 
 Outputs are written to:
 
@@ -551,6 +572,8 @@ into:
 ``` text
 mr_results.tsv
 ```
+
+For rows where `Analysis = cis_only`, `Scripts/05a_run_mr_array.R` annotates instruments as cis or trans using the exposure protein coordinates and applies the cis-only filter immediately before harmonisation/MR. Rows where `Analysis = cis_trans` retain all pair-specific instruments.
 
 ------------------------------------------------------------------------
 

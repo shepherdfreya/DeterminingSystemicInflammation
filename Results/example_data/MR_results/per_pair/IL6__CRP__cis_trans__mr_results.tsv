@@ -1,0 +1,2 @@
+id.exposure	id.outcome	outcome	exposure	method	nsnp	b	se	pval	lo_ci	up_ci	or	or_lci95	or_uci95	egger_intercept	egger_intercept_se	egger_intercept_pval	Q	Q_df	Q_pval	n_snps	analysis_set
+IL6	nxzTAy	CRP	IL6	Inverse variance weighted	2	-0.762832526936764	0.538526201839512	0.156623643286911	-1.81834388254221	0.292678828668679	0.466343623580584	0.162294306927368	1.34001234776274	NA	NA	NA	204.267582949915	1	2.44679503749886e-46	2	cis_trans

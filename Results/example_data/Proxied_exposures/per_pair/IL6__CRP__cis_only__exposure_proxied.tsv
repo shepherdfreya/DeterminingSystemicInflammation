@@ -1,0 +1,2 @@
+chr.exposure	SNP	pos.exposure	effect_allele.exposure	other_allele.exposure	eaf.exposure	se.exposure	pval.exposure	beta.exposure	exposure	mr_keep.exposure	pval_origin.exposure	id.exposure	data_source.exposure	F_stat	instrument_region
+1	rs4537545	154418879	T	C	0.39366	0.004563	8.39e-85	0.090997	IL6	TRUE	reported	IL6	textfile	397.697821316577	cis
