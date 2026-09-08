@@ -36,7 +36,7 @@ The following sensitivity analyses were included:
 Colocalization was considered to pass where:
 
 ```text
-PP.H4.abf > 0.8
+PP.H4.abf >= 0.8
 ```
 
 Heterogeneity and pleiotropy tests were considered to pass where there was no strong evidence of violation:

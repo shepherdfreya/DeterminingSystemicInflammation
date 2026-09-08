@@ -31,6 +31,20 @@ PROXY_TAG_NSNP <- 5000
 COLOC_H4_THRESHOLD <- 0.8
 COLOC_MIN_OVERLAP  <- 10
 
+# ---- PWCoCo colocalization settings ----
+# PWCoCo binary and LD reference panels should be edited to match the local/HPC install.
+PWCOCO_BIN <- Sys.getenv("PWCOCO_BIN", unset = "pwcoco")
+PWCOCO_WINDOW <- 5e5
+PWCOCO_MAF <- 0.01
+PWCOCO_H4_THRESHOLD <- 0.8
+PWCOCO_PPH4_SCALE <- 100
+PWCOCO_REF_PANEL_PREFIXES <- REF_PANEL_PREFIXES
+
+# Build GRCh37 MHC caution interval. Adjust if using a different convention.
+MHC_CHR <- "6"
+MHC_START <- 25000000
+MHC_END <- 34000000
+
 # ---- Evidence appraisal settings ----
 EVIDENCE_ALPHA <- 0.05
 EVIDENCE_BONFERRONI_N_TESTS <- NA

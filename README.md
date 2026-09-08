@@ -57,12 +57,13 @@ Some `gwasvcf` dependencies are installed through Bioconductor. If `gwasvcf` is 
 
 The colocalization step additionally requires:
 
-- coloc
+- PWCoCo v1.0 or later, available as a command-line binary
+- PLINK-format LD reference panels for the relevant genome build
 
-Install it with:
+Set the PWCoCo binary path in `Utils/Config.R`, or export it when running:
 
-``` r
-install.packages("coloc")
+``` bash
+PWCOCO_BIN="/path/to/pwcoco" RUN_COLOC=TRUE bash Shell/run_pipeline_local.sh example_data Results/ExampleRun
 ```
 
 If you install packages into a project-local R library, set `R_LIBS_USER` before running the pipeline so that each `Rscript` call can find them. For example:
@@ -190,7 +191,10 @@ These include:
 - proxy search r2 threshold
 - proxy search window size
 - maximum number of proxy SNPs to return
-- colocalization H4 pass threshold
+- PWCoCo binary path
+- PWCoCo LD reference panel prefixes
+- PWCoCo instrument-centred extraction window
+- PWCoCo H4 pass threshold
 - minimum overlapping SNPs required for colocalization
 - evidence appraisal alpha threshold
 
@@ -202,11 +206,13 @@ PROXY_TAG_KB   <- 5000
 PROXY_TAG_NSNP <- 5000
 ```
 
-Example colocalization settings:
+Example PWCoCo colocalization settings:
 
 ``` r
-COLOC_H4_THRESHOLD <- 0.8
-COLOC_MIN_OVERLAP  <- 10
+PWCOCO_BIN <- Sys.getenv("PWCOCO_BIN", unset = "pwcoco")
+PWCOCO_WINDOW <- 5e5
+PWCOCO_H4_THRESHOLD <- 0.8
+COLOC_MIN_OVERLAP <- 10
 ```
 
 Example cis/trans analysis setting:
@@ -587,19 +593,25 @@ Scripts/06a_run_colocalization_array.R
 
 For each exposure-outcome pair, this script:
 
-1.  Reads the full raw exposure and outcome GWAS files using the manifest.
-2.  Defines colocalization loci.
-3.  Runs `coloc::coloc.abf` for each locus with overlapping SNPs.
-4.  Reports posterior probabilities for H0-H4.
-5.  Flags loci as `Pass` when `PP.H4.abf > COLOC_H4_THRESHOLD`.
+1.  Reads the prepared exposure instruments for the active analysis row.
+2.  Prioritises cis instruments when at least one cis instrument is available.
+3.  If no cis instruments are available and multiple trans instruments remain, selects the trans instrument with the smallest exposure p-value.
+4.  Tests single-variant instruments regardless of cis/trans status.
+5.  Extracts regions within plus or minus 500 kb around each selected instrument.
+6.  Writes PWCoCo-formatted exposure and outcome regional summary-statistic files.
+7.  Runs the external `pwcoco` binary with a build-matched PLINK reference panel.
+8.  Reports the strongest PWCoCo H4 result for each selected instrument locus.
+9.  Flags loci as `Pass` when `PP.H4.abf >= PWCOCO_H4_THRESHOLD`.
 
 By default:
 
 ``` text
-H4 > 0.8 = Pass
+H4 >= 0.8 = Pass
 ```
 
-For exposures with protein coordinates in `trait_manifest.csv`, the script uses the protein region plus `cis_window` from `Utils/Config.R`. For exposures without protein coordinates, it falls back to instrument-centred loci using `all_exposures.txt`.
+The implementation follows a PWCoCo-style instrument-centred workflow. Protein coordinates in `trait_manifest.csv` are used to classify instruments as cis or trans using a plus or minus 500 kb window around the protein coordinates. Colocalization loci themselves are always defined as plus or minus 500 kb around the selected instrumented variant.
+
+Variants in the MHC region are retained but flagged as `caution_MHC`.
 
 Pair-specific outputs are written to:
 
@@ -665,7 +677,7 @@ It then calculates:
 
 - Bonferroni significance using `EVIDENCE_ALPHA / number_of_primary_tests`
 - FDR significance using Benjamini-Hochberg correction
-- colocalization pass status using `PP.H4.abf > COLOC_H4_THRESHOLD`
+- colocalization pass status using `PP.H4.abf >= PWCOCO_H4_THRESHOLD`
 - heterogeneity pass status using Cochran's Q `p > EVIDENCE_ALPHA`
 - pleiotropy pass status using MR-Egger intercept `p > EVIDENCE_ALPHA`
 - causal direction status using Steiger filtering from `mr_summary.tsv`
